@@ -3,20 +3,12 @@
 // Asks for the password twice (nothing shows as you type), then sends it over SSH to the server's PHP,
 // which stores only a hash, in .hh-data/admin.json in the document root. The password itself is never
 // written to a file here, never goes into git, and never appears on a command line. Run it again to change it.
-const readline = require('readline');
 const { spawn } = require('child_process');
+const { askHidden: ask } = require('./lib');   // raw terminal mode: nothing typed is ever shown
 
 const DOC = 'public_html/website_adbe171a';                         // the document root, as in deploy.js
 const TARGET = process.env.HAPPYHILLZ_SSH_TARGET || 'happyhillz';   // the Host entry in ~/.ssh/config
 const PORT = process.env.HAPPYHILLZ_SSH_PORT;
-
-function ask(question) {
-  return new Promise(resolve => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    rl._writeToOutput = s => { if (s.includes(question)) process.stdout.write(s); };   // hide what is typed
-    rl.question(question, answer => { rl.close(); process.stdout.write('\n'); resolve(answer); });
-  });
-}
 
 (async () => {
   if (!process.stdin.isTTY) throw new Error('run this in a terminal, so the password can be typed in privately');
