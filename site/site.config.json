@@ -12,14 +12,22 @@
     "label": "Head-On: Elephant Herd"
   },
   "featured": {
-    "count": 6,
-    "exclude": [
-      "Buffalo River",
-      "Zebra Crossing",
-      "Sand Avalanche",
-      "Rhino Fog",
-      "Storm Wall"
-    ]
+    "count": 6
+  },
+  "hide": [
+    "Buffalo River",
+    "Zebra Crossing",
+    "Sand Avalanche",
+    "Rhino Fog",
+    "Storm Wall"
+  ],
+  "episodeNumbers": {
+    "Meet the Cast": 25,
+    "Buffalo Stampede": 4
+  },
+  "searchVerification": {
+    "google": "",
+    "bing": ""
   },
   "forceHttps": true
 }

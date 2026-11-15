@@ -1,43 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Happy Hillz | Home of the Panthers Pack cartoon</title>
-<meta name="description" content="Happy Hillz makes Panthers Pack, a cartoon series about a band of young panthers running through the wild. Watch the most-watched episodes and subscribe on YouTube.">
-<link rel="canonical" href="{{siteUrl}}/">
-<meta name="theme-color" content="#0b0b0f">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Happy Hillz">
-<meta property="og:title" content="Panthers Pack, a Happy Hillz cartoon">
-<meta property="og:description" content="A band of young panthers, always on the run. In every episode something huge comes straight at them.">
-<meta property="og:url" content="{{siteUrl}}/">
-<meta property="og:image" content="{{siteUrl}}/og.jpg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="preload" href="/fonts/anton-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/fonts/comic-neue-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/styles.css?v={{v}}">
-<script src="/app.js?v={{v}}" defer></script>
-</head>
-<body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="bar">
-  <div class="wrap bar__in">
-    <a class="wordmark" href="/" aria-label="Happy Hillz, home">Happy Hillz</a>
-    <nav class="bar__nav" aria-label="Main">
-      <a class="bar__link" href="#episodes">Episodes</a>
-      <a class="bar__link" href="#show">The show</a>
-      <a class="btn btn--pop btn--sm" href="{{subscribeUrl}}" target="_blank" rel="noopener">Subscribe</a>
-    </nav>
-  </div>
-</header>
-
-<main id="main">
-
 <section class="hero">
   <div class="hero__bg" aria-hidden="true">
     {{horizon}}
@@ -45,7 +5,7 @@
   </div>
   <div class="wrap hero__in">
     <div class="hero__copy">
-      <p class="chips"><span class="chip chip--ink">Happy Hillz</span><span class="chip chip--pop">Original cartoon</span></p>
+      <p class="chips"><span class="chip chip--ink">Happy Hillz</span><span class="chip chip--pop">Animated cartoon series</span></p>
       <h1 class="lockup"><span class="lockup__a">Panthers</span> <span class="lockup__b">Pack</span></h1>
       <p class="lede">A band of young panthers, always on the run. In every episode something huge comes straight at them: a stampede, a flash flood, a falling star, a river full of crocodiles. They get through it by sticking together.</p>
       <div class="actions">
@@ -58,7 +18,7 @@
       <div class="sun" aria-hidden="true"></div>
       <figure class="phone">
         <div class="phone__screen">
-          <img src="/thumbs/{{heroThumb}}.webp" alt="" width="540" height="960" fetchpriority="high">
+          <img src="/thumbs/{{heroThumb}}.webp" alt="The Panthers Pack running toward a herd of elephants in {{trailerLabel}}" width="540" height="960" fetchpriority="high">
           <iframe data-src="/trailer/?clean" title="Live animation of {{trailerLabel}}" tabindex="-1" aria-hidden="true"></iframe>
           <a class="phone__play" href="{{heroHref}}" {{heroData}}><span class="chip chip--pop">{{iconPlay}}Watch with sound</span></a>
         </div>
@@ -73,12 +33,12 @@
   <div class="wrap">
     <div class="head">
       <h2>Most-watched episodes</h2>
-      <p>Every episode is under 30 seconds. Pick one and press play.</p>
+      <p>Every episode is a short cartoon video, under 30 seconds. Pick one and press play.</p>
     </div>
     <ul class="reel" role="list">
 {{cards}}
     </ul>
-    <p class="more"><a class="btn" href="{{channelUrl}}/shorts" target="_blank" rel="noopener">See every episode on YouTube</a></p>
+    <p class="more"><a class="btn" href="/episodes/">See all {{episodeCount}} episodes</a></p>
   </div>
 </section>
 
@@ -113,6 +73,22 @@
   </div>
 </section>
 
+<section class="section about" id="about">
+  <div class="wrap about__in">
+    <h2>About the cartoon</h2>
+    <div class="about__text">
+      <p><strong>Panthers Pack</strong> is an animated cartoon series from Happy Hillz about four big cats who never stop running: a black panther who leads the way, a quiet second black panther, a leopard and a jaguar. Each episode is a short animation with one huge problem and one clever way through it. Elephants charge, rivers flood, stars fall out of the sky, and the pack makes friends with zebras, giraffes and hippos along the way.</p>
+      <p>Every frame is drawn in code and every score is generated, not recorded. The same episode you can watch on YouTube is running live in the phone at the top of this page. Watch the vertical Shorts on your phone or the landscape versions on a big screen. The series is family-friendly, and a new episode comes out every week.</p>
+    </div>
+    <ul class="meet" role="list">
+      <li><span class="meet__dot meet__dot--black"></span>Black Panther, the leader</li>
+      <li><span class="meet__dot meet__dot--black"></span>The second panther</li>
+      <li><span class="meet__dot meet__dot--leopard"></span>Leopard</li>
+      <li><span class="meet__dot meet__dot--jaguar"></span>Jaguar</li>
+    </ul>
+  </div>
+</section>
+
 <section class="join">
   <div class="wrap join__in">
     <h2>Run with the pack</h2>
@@ -120,26 +96,3 @@
     <a class="btn btn--pop btn--lg" href="{{subscribeUrl}}" target="_blank" rel="noopener">Subscribe on YouTube</a>
   </div>
 </section>
-
-</main>
-
-<footer class="foot">
-  <div class="wrap foot__in">
-    <p><span class="wordmark wordmark--sm">Happy Hillz</span> Original animated adventures, one short episode at a time.</p>
-    <p><a href="{{channelUrl}}" target="_blank" rel="noopener">YouTube: {{handle}}</a> · © {{year}} Happy Hillz</p>
-  </div>
-</footer>
-
-<dialog class="player" id="player" aria-labelledby="player-title">
-  <div class="player__box">
-    <div class="player__top">
-      <h2 id="player-title">Episode</h2>
-      <button class="player__close" type="button" aria-label="Close player">{{iconClose}}</button>
-    </div>
-    <div class="player__frame"></div>
-    <p class="player__more"><a href="{{channelUrl}}" target="_blank" rel="noopener">Open on YouTube</a></p>
-  </div>
-</dialog>
-
-</body>
-</html>
