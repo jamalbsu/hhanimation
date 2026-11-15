@@ -1,9 +1,11 @@
 // Builds the static site into dist/. No server-side code: HostGator serves the folder as is.
 //   npm run build
-// Pages: / (landing), /episodes/ (all episodes), /episodes/<slug>/ (one per episode), 404.html.
+// Pages: / (landing), /episodes/ (all episodes), /episodes/<slug>/ (one per episode),
+// /games/ (all games), /games/pack-run/ (the Pack Run game), 404.html.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const vm = require('vm');
 const sharp = require('sharp');
 const { at, config, readJson, slug, visibleEpisodes, pickFeatured, findEpisode } = require('./lib');
 
@@ -59,6 +61,18 @@ function horizon() {
 
 const ICON_PLAY = '<svg class="i" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.5.6 9.4 5 1.5 9.4z"/></svg>';
 const ICON_CLOSE = '<svg class="i" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.6.4.4 1.6 3.8 5 .4 8.4l1.2 1.2L5 6.2l3.4 3.4 1.2-1.2L6.2 5l3.4-3.4L8.4.4 5 3.8z"/></svg>';
+const ICON_PAUSE = '<svg class="i" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.5 1h2.6v8H1.5zM5.9 1h2.6v8H5.9z"/></svg>';
+const ICON_SOUND_OFF = '<svg class="i i-off" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M1.5 7H6l5-4.2v14.4L6 13H1.5z"/><path d="m13.6 7.4 5 5.2m0-5.2-5 5.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const ICON_SOUND_ON = '<svg class="i i-on" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M1.5 7H6l5-4.2v14.4L6 13H1.5z"/><path d="M13.8 6.6a4.8 4.8 0 0 1 0 6.8M16.4 4a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const PAW = '<svg class="game__paw" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><ellipse cx="12" cy="16.2" rx="5.4" ry="4.5"/><ellipse cx="4.9" cy="10.2" rx="2.3" ry="2.9"/><ellipse cx="9.3" cy="5.6" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5.6" rx="2.3" ry="3"/><ellipse cx="19.1" cy="10.2" rx="2.3" ry="2.9"/></svg>';
+
+// {{name}} placeholders in a page template; an unknown name stops the build
+function fill(tpl, vars, name) {
+  return tpl.replace(/\{\{(\w+)\}\}/g, (m, k) => {
+    if (!(k in vars)) throw new Error(`${name} uses {{${k}}}, which the build does not define`);
+    return vars[k];
+  });
+}
 
 // ---- content ---------------------------------------------------------------
 const channelUrl = `https://www.youtube.com/${cfg.channel.handle}`;
@@ -92,6 +106,38 @@ function card(ep, { play = false, meta = false } = {}) {
       </a></li>`;
 }
 
+// ---- games -------------------------------------------------------------------
+// Pack Run is src/games/pack-run/game.js with two pieces of the show put in at its markers: the panther rig
+// (../panther/panther-rig.js, the same file every episode builder uses) and the elephants and buffalo of the
+// episode engine (the "hoofed animals" section of the trailer episode).
+const GAME = {
+  path: '/games/pack-run/', name: 'Pack Run', published: '2026-11-14', updated: '2026-11-14',   // bump "updated" when the game changes
+  shot: 'src/games/pack-run/shot.png', image: '/games/pack-run/share.jpg', card: '/games/pack-run/card.webp',
+  // each threat, with the episode it comes from
+  threats: [['elephants', 'Elephants', 'Head-On Elephant Herd'], ['buffalo', 'Buffalo', 'Buffalo Stampede'], ['boulders', 'Boulders', 'Rockslide']],
+};
+GAME.description = `${SERIES} game: play free online. Steer the pack past charging elephants, buffalo and boulders in a 45-second cartoon runner. No download.`;
+GAME.pitch = `An elephant herd is charging head-on. Swipe the pack out of the way, jump the logs and grab the stars. It runs right here in your browser, on a phone or a computer.`;
+const threatEps = GAME.threats.map(([key, label, title]) => {
+  const ep = findEpisode(shown, title);
+  if (!ep) throw new Error(`Pack Run links the "${label}" round to "${title}", which is not on the site`);
+  return { key, label, ep };
+});
+function gameScript() {
+  const rig = fs.readFileSync(path.join(at('..'), 'panther', 'panther-rig.js'), 'utf8');
+  const engine = read(cfg.trailer.page), a = engine.indexOf('// ---- hoofed animals:'), b = engine.indexOf('const HERDS = ', a);
+  if (a < 0 || b < 0) throw new Error(`${cfg.trailer.page} has no "hoofed animals" section for Pack Run`);
+  let src = read('src/games/pack-run/game.js');
+  for (const [mark, code] of [['//@@PANTHER_RIG@@', rig], ['//@@BEASTS@@', engine.slice(a, b)]]) {
+    if (src.split(mark).length !== 2) throw new Error(`game.js must have exactly one ${mark}`);
+    src = src.replace(mark, () => code);
+  }
+  new vm.Script(src, { filename: 'pack-run.js' });   // a syntax error stops the build here, not in a visitor's browser
+  return src;
+}
+const gameJs = gameScript();
+const gv = crypto.createHash('sha1').update(gameJs).digest('hex').slice(0, 8);
+
 // ---- structured data ---------------------------------------------------------
 const ORG = { '@type': 'Organization', '@id': `${SITE}/#org`, name: cfg.brand, url: `${SITE}/`, logo: { '@type': 'ImageObject', url: abs('/logo.png'), width: 512, height: 512 }, sameAs: [channelUrl] };
 const SERIES_LD = { '@type': 'CreativeWorkSeries', '@id': `${SITE}/#series`, name: SERIES, url: `${SITE}/`, genre: ['Animation', 'Cartoon', 'Adventure'], inLanguage: 'en', creator: { '@id': `${SITE}/#org` }, sameAs: [channelUrl] };
@@ -120,6 +166,7 @@ const header = current => `<header class="bar">
     <a class="wordmark" href="/" aria-label="${esc(cfg.brand)}, home">${esc(cfg.brand)}</a>
     <nav class="bar__nav" aria-label="Main">
       <a class="bar__link" href="/episodes/"${current === 'episodes' ? ' aria-current="page"' : ''}>Episodes</a>
+      <a class="bar__link" href="/games/"${current === 'games' ? ' aria-current="page"' : ''}>Games</a>
       <a class="bar__link" href="/#about">About</a>
       <a class="btn btn--pop btn--sm" href="${subscribeUrl}" target="_blank" rel="noopener">Subscribe</a>
     </nav>
@@ -129,7 +176,7 @@ const header = current => `<header class="bar">
 const footer = `<footer class="foot">
   <div class="wrap foot__in">
     <p><span class="wordmark wordmark--sm">${esc(cfg.brand)}</span> Original animated adventures, one short episode at a time.</p>
-    <p><a href="/episodes/">All episodes</a> · <a href="${channelUrl}" target="_blank" rel="noopener">YouTube: ${esc(cfg.channel.handle)}</a> · © ${year} ${esc(cfg.brand)}</p>
+    <p><a href="/episodes/">All episodes</a> · <a href="/games/">Games</a> · <a href="${channelUrl}" target="_blank" rel="noopener">YouTube: ${esc(cfg.channel.handle)}</a> · © ${year} ${esc(cfg.brand)}</p>
   </div>
 </footer>`;
 
@@ -200,11 +247,9 @@ const pages = [];   // for the sitemap
     cards: featured.map(ep => card(ep, { play: true })).join('\n'),
     heroHref: pageOf(hero), heroData: playData(hero, cfg.trailer.label), heroThumb: hero.shortId, trailerLabel: esc(cfg.trailer.label),
     burstNew: burst(3), burstA: burst(11), burstB: burst(29, 15), burstC: burst(47, 12), iconPlay: ICON_PLAY,
+    gameHref: GAME.path, gameCard: GAME.card, gamePitch: esc(GAME.pitch), burstGame: burst(61, 12),
   };
-  const body = read('src/home.html').replace(/\{\{(\w+)\}\}/g, (m, name) => {
-    if (!(name in vars)) throw new Error(`home.html uses {{${name}}}, which the build does not define`);
-    return vars[name];
-  });
+  const body = fill(read('src/home.html'), vars, 'home.html');
   const description = `${SERIES} is a family-friendly animated cartoon about young panthers, a leopard and a jaguar on the run. Short adventure videos, new every week.`;
   write('index.html', page({
     path: '/', title: `${SERIES}: Animated Panther Cartoon Videos | ${cfg.brand}`, description, body, withDialog: true,
@@ -299,6 +344,73 @@ ${more.map(e => card(e)).join('\n')}
   }));
   copy(`src/share/${ep.slug}.jpg`, `share/${ep.slug}.jpg`);
   pages.push({ loc: pageOf(ep), lastmod: day(ep.published), ep });
+}
+
+// Games: the list, and Pack Run
+const VIDEO_GAME_LD = {
+  '@type': 'VideoGame', '@id': `${abs(GAME.path)}#game`, name: GAME.name, alternateName: `${SERIES}: ${GAME.name}`,
+  description: GAME.description, url: abs(GAME.path), image: abs(GAME.image),
+  genre: ['Endless runner', 'Action', 'Family'], gamePlatform: ['Web browser'], applicationCategory: 'Game', operatingSystem: 'Any (runs in a web browser)',
+  playMode: 'SinglePlayer', isAccessibleForFree: true, isFamilyFriendly: true, inLanguage: 'en',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', availability: 'https://schema.org/InStock' },
+  keywords: `${SERIES} game, panther game, free online game, cartoon game, runner game, browser game`,
+  datePublished: GAME.published, dateModified: GAME.updated,
+  about: SERIES_LD, author: { '@id': `${SITE}/#org` }, publisher: ORG,
+};
+{
+  const picker = name => `          <fieldset class="game__pick">
+            <legend>Pick the threat</legend>
+            <div class="game__pick-row">${threatEps.map(({ key, label }, i) => `<label><input type="radio" name="${name}" value="${key}" data-threat${i ? '' : ' checked'}><span>${esc(label)}</span></label>`).join('')}</div>
+          </fieldset>`;
+  const vars = {
+    series: esc(SERIES), subscribeUrl, episodeCount: shown.length,
+    paws: PAW.repeat(3), iconPause: ICON_PAUSE, iconSoundOff: ICON_SOUND_OFF, iconSoundOn: ICON_SOUND_ON, iconPlay: ICON_PLAY,
+    burstEnd: burst(71, 14), pickerStart: picker('threat'), pickerEnd: picker('threat-again'),
+    epLinks: `          <p class="game__ep">${threatEps.map(({ key, ep }, i) => `<a data-ep="${key}" href="${pageOf(ep)}"${i ? ' hidden' : ''}>Watch “${esc(ep.title)}”, the episode behind this round</a>`).join('')}</p>`,
+    threatEpisodes: threatEps.map(({ ep }) => `<a href="${pageOf(ep)}">${esc(ep.title)}</a>`).join(', ').replace(/, ([^,]*)$/, ' and $1'),
+    cards: threatEps.map(({ ep }) => card(ep, { meta: true })).join('\n'),
+  };
+  write('games/pack-run/index.html', page({
+    path: GAME.path, current: 'games', image: GAME.image, description: GAME.description,
+    title: `${GAME.name}: Free ${SERIES} Game, Play Online | ${cfg.brand}`,
+    head: `<script src="${GAME.path}pack-run.js?v=${gv}" defer></script>\n`,
+    body: fill(read('src/games/pack-run/page.html'), vars, 'games/pack-run/page.html'),
+    ld: [VIDEO_GAME_LD, crumbs([['Home', '/'], ['Games', '/games/'], [GAME.name, GAME.path]])],
+  }));
+  write('games/pack-run/pack-run.js', gameJs);
+
+  const body = `<section class="section listing">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li aria-current="page">Games</li></ol></nav>
+    <div class="head">
+      <h1 class="page-title">${esc(SERIES)} games</h1>
+      <p>Free games starring the ${esc(SERIES)}, the animated panther cartoon. They run right in your browser on a phone, a tablet or a computer: no download, no sign-up.</p>
+    </div>
+    <ul class="games" role="list">
+      <li><a class="game-card" href="${GAME.path}">
+        <span class="game-card__art"><img src="${GAME.card}" alt="The ${esc(SERIES)} running from a charging elephant herd in ${GAME.name}" width="800" height="420" decoding="async"></span>
+        <span class="game-card__body">
+          <span class="chips"><span class="chip chip--pop">Free</span><span class="chip chip--ink">Phone or computer</span></span>
+          <h2 class="game-card__title">${GAME.name}</h2>
+          <span class="game-card__text">Elephants, buffalo or a rockslide, charging straight at the pack. Switch lanes, jump and grab the stars for 45 seconds.</span>
+          <span class="btn btn--pop">${ICON_PLAY}Play ${GAME.name}</span>
+        </span>
+      </a></li>
+    </ul>
+    <p class="more">Rather watch? <a href="/episodes/">See all ${shown.length} episodes of the cartoon</a>.</p>
+  </div>
+</section>`;
+  write('games/index.html', page({
+    path: '/games/', current: 'games', body, image: GAME.image,
+    title: `${SERIES} Games: Free Online Cartoon Games | ${cfg.brand}`,
+    description: `Free online games starring the ${SERIES}, the animated panther cartoon. Play in your browser on a phone, tablet or computer. No download, no sign-up.`,
+    ld: [
+      { '@type': 'CollectionPage', '@id': `${abs('/games/')}#page`, url: abs('/games/'), name: `${SERIES} games`, isPartOf: { '@id': `${SITE}/#website` }, about: SERIES_LD,
+        mainEntity: { '@type': 'ItemList', numberOfItems: 1, itemListElement: [{ '@type': 'ListItem', position: 1, url: abs(GAME.path), name: GAME.name }] } },
+      crumbs([['Home', '/'], ['Games', '/games/']]),
+    ],
+  }));
+  pages.push({ loc: '/games/', lastmod: GAME.updated }, { loc: GAME.path, lastmod: GAME.updated });
 }
 
 // Not found: a real 404 (an unknown address must not look like a page to search engines).
@@ -428,6 +540,12 @@ ${https}
   const svg = fs.readFileSync(at('src/static/favicon.svg'));
   await sharp(svg, { density: 300 }).resize(180, 180).png().toFile(path.join(DIST, 'apple-touch-icon.png'));
   await sharp(svg, { density: 600 }).resize(512, 512).png().toFile(path.join(DIST, 'logo.png'));
+  // The game's share image and card come from one still of the game (npm run game-shot makes it).
+  if (fs.existsSync(at(GAME.shot))) {
+    await sharp(at(GAME.shot)).resize(1200, 630, { fit: 'cover' }).jpeg({ quality: 84, mozjpeg: true }).toFile(path.join(DIST, GAME.image));
+    await sharp(at(GAME.shot)).resize(800, 420, { fit: 'cover' }).webp({ quality: 82 }).toFile(path.join(DIST, GAME.card));
+  } else if (process.env.CI) throw new Error(`missing ${GAME.shot}; run "npm run game-shot" and commit it`);
+  else console.warn(`warning: no ${GAME.shot} yet, so the game has no share image or card; run "npm run game-shot"`);
 
   let total = 0, count = 0;
   (function sum(dir) {

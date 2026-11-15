@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'panther/panther-rig.js'      # the game draws the cats with it
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
