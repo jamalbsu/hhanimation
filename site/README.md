@@ -30,6 +30,7 @@ Run these from this folder (`site/`):
 |---|---|
 | `npm run videos` | Re-reads the public channel. It updates `data/videos.json` (episodes, views, dates, lengths, descriptions, tags) and adds images for new episodes. `-- --refresh` re-reads everything. |
 | `npm run build` | Builds `dist/`. |
+| `npm run admin-password` | Sets the password for the admin page `/secret-crm-door/` (asks twice, stores only a hash on the server). |
 | `npm run game-shot` | Builds, then makes Pack Run's share image (`src/games/pack-run/shot.png`) from a still of the game in headless Chrome, then builds again. Commit the image. Needs Chrome; set `CHROME` to its path if it isn't in the usual place. |
 | `npm run check-server` | Tests SSH access and lists the document root. |
 | `npm run deploy:dry` | Builds, uploads, and prints what would change on the server. Changes nothing. |
@@ -60,6 +61,10 @@ The pack runs down a three-lane savanna trail while one huge threat charges stra
 `src/games/pack-run/page.html` is the page around it. The game's date for the sitemap and structured data is `GAME.updated` in `scripts/build.js`; change it when the game changes. Pushing a change to the rig also redeploys the site, so the game picks it up.
 
 **Speed.** The rig paints each cat with thousands of small shapes, more than a browser's drawing thread can rasterize 60 times a second. So the game file also runs as two to four Web Workers that paint the cats and the herds in software on other cores, while the page only places the pictures. Each animal's pose is repainted up to 30 times a second, the frame rate of the episodes; the scene itself runs at 60 fps. Browsers without `OffscreenCanvas` paint on the page instead, and a device that can't keep up gets a lower resolution.
+
+**Counting players.** The game keeps a random number in the player's browser (`packrun.player` in localStorage) and posts it to `/api/play.php` when a round starts and ends. That's PHP (`src/server/`), which appends a line to `.hh-data/plays.log` in the document root. Apache refuses every request for `.hh-data/`, and deploys never delete it. No IP, cookie or name is stored. Counting is off on localhost unless the address has `?count`.
+
+**Admin page.** https://happyhillz.com/secret-crm-door/ shows players (all time, today, 7 and 30 days), rounds, wins, best score, the last 14 days and the split by threat. It's password protected: wrong passwords are limited to 5 per 15 minutes, and it is kept out of search engines. Set or change the password with `npm run admin-password`, run in a terminal on a computer with the site's SSH key. It sends the password to the server's PHP over SSH, and only a hash is stored, in `.hh-data/admin.json`. The password is never in git.
 
 **Test switches** (add to the address): `?bot` plays a round by itself; `?cats=page` turns the workers off; `?shot` draws the still used for the share image. `window.__packRun` shows the frame rate, how often each cat is repainted, and the game state.
 

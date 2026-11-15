@@ -6,8 +6,8 @@
 // Works without a local rsync (Windows). dist/ is packed here and uploaded as
 // one file into the document root, then a script sent over stdin unpacks it
 // into a staging folder and syncs it with the server's rsync. Nothing outside
-// ~/public_html/website_adbe171a is touched, and .well-known/ (SSL validation)
-// and cgi-bin/ are never deleted. Upload and staging files are removed after.
+// ~/public_html/website_adbe171a is touched, and .well-known/ (SSL validation),
+// cgi-bin/ and .hh-data/ (Pack Run's play counter and the admin password) are never deleted. Upload and staging files are removed after.
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -78,15 +78,15 @@ if [ ! -f "$STAGE/index.html" ] || [ ! -f "$STAGE/.htaccess" ]; then echo "uploa
 if command -v rsync >/dev/null 2>&1; then
   if [ -n "$DRY" ]; then echo "would change on the server (dry run, nothing changed):"; else echo "changed on the server:"; fi
   OUT=$(rsync -a -c --delete $DRY --itemize-changes \
-    --exclude='/.deploy-stage-*' --exclude='/.deploy-upload-*' --exclude='/.well-known/' --exclude='/cgi-bin/' \
+    --exclude='/.deploy-stage-*' --exclude='/.deploy-upload-*' --exclude='/.well-known/' --exclude='/cgi-bin/' --exclude='/.hh-data/' \
     "$STAGE/" "$DOC/")
   CHANGES=$(printf '%s\n' "$OUT" | grep -v -e '^\.' -e '^$' || true)
   if [ -n "$CHANGES" ]; then printf '%s\n' "$CHANGES"; else echo "  nothing: the server already has this build"; fi
 elif [ -n "$DRY" ]; then
   echo "server has no rsync; a deploy would replace these entries in the document root:"
-  ls -A "$DOC" | grep -v -e '^\.deploy-' -e '^\.well-known$' -e '^cgi-bin$' || echo "  (document root is empty)"
+  ls -A "$DOC" | grep -v -e '^\.deploy-' -e '^\.well-known$' -e '^cgi-bin$' -e '^\.hh-data$' || echo "  (document root is empty)"
 else
-  find "$DOC" -mindepth 1 -maxdepth 1 ! -name "$STAGE" ! -name "$UP" ! -name .well-known ! -name cgi-bin -exec rm -rf {} +
+  find "$DOC" -mindepth 1 -maxdepth 1 ! -name "$STAGE" ! -name "$UP" ! -name .well-known ! -name cgi-bin ! -name .hh-data -exec rm -rf {} +
   cp -a "$STAGE/." "$DOC/"
   echo "replaced the document root contents (server has no rsync)"
 fi

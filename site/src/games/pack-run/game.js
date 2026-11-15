@@ -511,6 +511,21 @@ const airborne = () => { const J = (STL - run.jumpT) / JD; return J > 0.14 && J 
 const scoreNow = () => Math.floor(run.dist / 100) + run.stars * 25 + (run.won ? 200 : 0);
 
 function setState(s) { state = s; stateT = STL; root.dataset.state = s; }
+// Counting players: one anonymous random number kept in this browser, sent when a round starts and ends
+// (to /api/play.php; the numbers show on the site's admin page). No name, no cookie, nothing else about the player.
+const PLAYER = (() => {
+  let id = store.get('packrun.player');
+  if (!/^[a-f0-9]{32}$/.test(id || '') && window.crypto && crypto.getRandomValues) {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    store.set('packrun.player', id);
+  }
+  return id;
+})();
+const COUNT = PLAYER && !SHOT && !BOT && (location.protocol === 'https:' || params.has('count')) && navigator.sendBeacon;
+function tell(event, extra) {
+  if (!COUNT) return;
+  try { navigator.sendBeacon('/api/play.php', JSON.stringify({ id: PLAYER, event, threat, ...extra })); } catch (e) { /* counting never gets in the way of playing */ }
+}
 function startRound() {
   if (state === 'go' || state === 'run') return;
   sound.unlock();
@@ -523,6 +538,7 @@ function startRound() {
   stage.focus({ preventScroll: true });
   pop(THREATS[threat].pop, { big: true, hue: threat === 'boulders' ? 'zap' : 'hot' });
   sound.go(); sound.music(true);
+  tell('start');
 }
 function finish(won) {
   run.won = won;
@@ -534,6 +550,7 @@ function finish(won) {
   for (const o of obs) o.leaving = true;
   const score = scoreNow(), key = 'packrun.best.' + threat, best = +(store.get(key) || 0), isBest = score > best;
   if (isBest) store.set(key, String(score));
+  tell('finish', { score, won });
   setTimeout(() => endScreen(score, Math.max(best, score), isBest && score > 0), REDUCE ? 500 : 1500);
 }
 
