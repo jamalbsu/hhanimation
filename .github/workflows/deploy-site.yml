@@ -1,0 +1,67 @@
+# Builds site/ and deploys it to happyhillz.com (HostGator) on every push to main
+# that changes the site. It can also be run by hand from the Actions tab.
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   HAPPYHILLZ_SSH_KEY   private half of the deploy key (public half is in HostGator as happyhillz-deploy.pub)
+#   HAPPYHILLZ_HOST      server IP
+#   HAPPYHILLZ_USER      SSH user
+#
+# The deploy itself is site/scripts/deploy.js, the same one used locally: it only
+# touches the Happy Hillz document root and never deletes .well-known/ or cgi-bin/.
+name: Deploy happyhillz.com
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.HAPPYHILLZ_SSH_KEY }}
+          SSH_HOST: ${{ secrets.HAPPYHILLZ_HOST }}
+          SSH_USER: ${{ secrets.HAPPYHILLZ_USER }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ]; then
+            echo "::error::Missing secrets. Add HAPPYHILLZ_SSH_KEY, HAPPYHILLZ_HOST and HAPPYHILLZ_USER under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/happyhillz
+          chmod 600 ~/.ssh/happyhillz
+          printf 'Host happyhillz\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/happyhillz\n  IdentitiesOnly yes\n' "$SSH_HOST" "$SSH_USER" > ~/.ssh/config
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        run: node scripts/deploy.js
