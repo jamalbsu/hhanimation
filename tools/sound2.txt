@@ -1,0 +1,189 @@
+// ---- SOUND 2: a score that follows the story, richer instruments, ambience beds, character voices, bigger effects ----
+// CFG.sound2 turns it on; { music, beds, voices } scale each part (0 = off).
+const S2 = CFG.sound2 ? Object.assign({ music: 1, beds: 1, voices: 1 }, CFG.sound2 === true ? {} : CFG.sound2) : null;
+function musBus() {                                   // all music goes through one bus, so it can duck under the big impacts
+  if (!ac._mus) { const g = ac.createGain(); g.gain.value = 1; g.connect(master); const w = ac.createGain(); w.gain.value = 0.32; g.connect(w); w.connect(wet); ac._mus = g; }
+  return ac._mus;
+}
+function n2Snd(at, e) {
+  const f = midiF(e.m || 60), v = Math.max(0.0005, (e.v || 1) * S2.music), L = e.len || 0.3, out = ac.createGain(); let dst = musBus();
+  if (e.pan) { const p = ac.createStereoPanner(); p.pan.value = e.pan; p.connect(dst); dst = p; }
+  out.connect(dst);
+  const env = (peak, att, hold, rel) => { const g = ac.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), at + att); if (hold > 0) g.gain.setValueAtTime(Math.max(0.0002, peak), at + att + hold); g.gain.exponentialRampToValueAtTime(0.0001, at + att + hold + rel); g.connect(out); return g; };
+  const osc = (type, fr, det, len) => { const o = ac.createOscillator(); o.type = type; o.frequency.value = fr; if (det) o.detune.value = det; o.start(at); o.stop(at + len); return o; };
+  const lp = (f0, q) => { const b = ac.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = f0; b.Q.value = q || 0.7; return b; };
+  switch (e.inst) {
+    case 'strings': {                                  // three detuned saws through an opening filter, with vibrato
+      const fl = lp(500, 0.6), g = env(0.02 * v, 0.28, Math.max(0, L - 0.3), 0.7), len = L + 1.1; fl.frequency.setValueAtTime(500, at); fl.frequency.linearRampToValueAtTime(2400, at + 0.4); fl.connect(g);
+      const lfo = osc('sine', 5.2, 0, len), lg = ac.createGain(); lg.gain.value = f * 0.004; lfo.connect(lg);
+      for (const d of [-12, 0, 12]) { const o = osc('sawtooth', f, d, len); lg.connect(o.frequency); o.connect(fl); } break; }
+    case 'brass': {                                    // saws with a filter that snaps open: a punchy horn
+      const fl = lp(350, 2), g = env(0.05 * v, 0.03, Math.max(0, L - 0.08), 0.22); fl.frequency.setValueAtTime(350, at); fl.frequency.exponentialRampToValueAtTime(2800, at + 0.06); fl.frequency.exponentialRampToValueAtTime(1200, at + 0.3); fl.connect(g);
+      for (const d of [-6, 6]) osc('sawtooth', f, d, L + 0.3).connect(fl); break; }
+    case 'bell': {                                     // FM bell: a modulator that dies away leaves a pure ring
+      const car = osc('sine', f, 0, 1.6), mod = osc('sine', f * 3.5, 0, 1.6), mg = ac.createGain(); mg.gain.setValueAtTime(f * 2.2, at); mg.gain.exponentialRampToValueAtTime(f * 0.05, at + 0.9); mod.connect(mg); mg.connect(car.frequency);
+      car.connect(env(0.07 * v, 0.004, 0, 1.4)); break; }
+    case 'harp': { const o = osc('triangle', f, 0, 1.0); o.frequency.setValueAtTime(f * 1.012, at); o.frequency.exponentialRampToValueAtTime(f, at + 0.03); o.connect(env(0.055 * v, 0.004, 0, 0.85)); osc('sine', f * 2, 0, 0.45).connect(env(0.016 * v, 0.003, 0, 0.35)); break; }
+    case 'flute': { const fl = lp(2600), o = osc('triangle', f, 0, L + 0.3), lfo = osc('sine', 5.5, 0, L + 0.3), lg = ac.createGain(); lg.gain.value = f * 0.006; lfo.connect(lg); lg.connect(o.frequency); o.connect(fl); fl.connect(env(0.06 * v, 0.06, Math.max(0, L - 0.12), 0.2)); noise(at, 0.08, 'bandpass', f * 2, 2, 0.008 * v, 0, 0.2); break; }
+    case 'bass': { const fl = lp(320), g = env(0.2 * v, 0.008, L * 0.6, 0.2); fl.connect(g); osc('sawtooth', f, 0, L + 0.3).connect(fl); osc('sine', f, 0, L + 0.3).connect(g); break; }
+    case 'kick': { const o = osc('sine', 150, 0, 0.3); o.frequency.setValueAtTime(150, at); o.frequency.exponentialRampToValueAtTime(42, at + 0.11); o.connect(env(0.34 * v, 0.004, 0, 0.26)); noise(at, 0.02, 'highpass', 3000, 0.7, 0.03 * v, 0, 0.05); break; }
+    case 'taiko': { for (const [a, b, gv] of [[110, 46, 0.36], [72, 38, 0.22]]) { const o = osc('sine', a, 0, 0.7); o.frequency.setValueAtTime(a, at); o.frequency.exponentialRampToValueAtTime(b, at + 0.3); o.connect(env(gv * v, 0.006, 0, 0.6)); } noise(at, 0.09, 'bandpass', 1500, 1, 0.05 * v, 0, 0.5); break; }
+    case 'snare': { noise(at, 0.16, 'bandpass', 2100, 0.8, 0.07 * v, e.pan || 0, 0.3); const o = osc('triangle', 190, 0, 0.12); o.frequency.exponentialRampToValueAtTime(150, at + 0.08); o.connect(env(0.05 * v, 0.003, 0, 0.09)); break; }
+    case 'hat': noise(at, 0.035, 'highpass', 8000, 0.7, 0.018 * v, e.pan || 0.25, 0.05); break;
+    case 'crash': noise(at, 1.8, 'highpass', 4500, 0.5, 0.11 * v, 0, 0.6); noise(at, 0.9, 'bandpass', 9000, 1, 0.05 * v, -0.2, 0.5); break;
+    case 'tom': { const o = osc('sine', f, 0, 0.4); o.frequency.setValueAtTime(f, at); o.frequency.exponentialRampToValueAtTime(f * 0.6, at + 0.2); o.connect(env(0.22 * v, 0.004, 0, 0.3)); break; }
+    case 'riser': {                                    // a rush of air sweeping upward into the hit
+      const s = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = noiseBuf; s.loop = true; bp.type = 'bandpass'; bp.Q.value = 1.2;
+      bp.frequency.setValueAtTime(300, at); bp.frequency.exponentialRampToValueAtTime(7000, at + L); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.1 * v, at + L); g.gain.exponentialRampToValueAtTime(0.0001, at + L + 0.06);
+      s.connect(bp); bp.connect(g); g.connect(out); s.start(at); s.stop(at + L + 0.1); break; }
+    case 'ostin': {                                    // a short, bitten low-string note: the engine of a chase
+      const fl = lp(700 + 1500 * Math.min(1, v), 1.2), g = env(0.07 * v, 0.004, 0.03, 0.1); fl.connect(g); for (const d of [-8, 8]) osc('sawtooth', f, d, 0.2).connect(fl); break; }
+    case 'braam': {                                    // the huge low brass blast of a threat: detuned saws, a filter that swells open, a sub under it
+      const fl = lp(180, 1.5), g = env(0.11 * v, 0.06, L, 1.1), len = L + 1.3; fl.frequency.setValueAtTime(180, at); fl.frequency.exponentialRampToValueAtTime(1900, at + 0.35); fl.frequency.exponentialRampToValueAtTime(600, at + L + 0.8); fl.connect(g);
+      for (const [m, d] of [[1, -16], [1, 0], [1, 16], [1.5, 5], [0.5, 0]]) osc('sawtooth', f * m, d, len).connect(fl); osc('sine', f / 2, 0, len).connect(env(0.2 * v, 0.03, L, 0.9)); break; }
+    case 'subdrop': { const o = osc('sine', 95, 0, 1.2); o.frequency.setValueAtTime(95, at); o.frequency.exponentialRampToValueAtTime(28, at + 1.0); o.connect(env(0.4 * v, 0.02, 0, 1.05)); break; }
+  }
+}
+// ambience: a bed of filtered noise that fades in and out, laid end to end in overlapping pieces
+function bedSnd(at, e) {
+  const T = { wind: ['bandpass', 420, 0.5], river: ['bandpass', 1100, 0.4], ocean: ['lowpass', 700, 0.3], jungle: ['bandpass', 5200, 3], night: ['bandpass', 4300, 9], rumble: ['lowpass', 70, 0.7] }[e.type]; if (!T) return;
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), p = ac.createStereoPanner(), fd = Math.min(0.5, e.dur / 3), v = Math.max(0.0002, e.v * S2.beds);
+  s.buffer = noiseBuf; s.loop = true; f.type = T[0]; f.frequency.value = T[1]; f.Q.value = T[2]; p.pan.value = e.pan || 0;
+  if (e.type === 'wind' || e.type === 'ocean') { f.frequency.setValueAtTime(T[1] * 0.7, at); f.frequency.linearRampToValueAtTime(T[1] * 1.4, at + e.dur / 2); f.frequency.linearRampToValueAtTime(T[1] * 0.8, at + e.dur); }
+  g.gain.setValueAtTime(0.0001, at); g.gain.linearRampToValueAtTime(v, at + fd); g.gain.setValueAtTime(v, at + e.dur - fd); g.gain.linearRampToValueAtTime(0.0001, at + e.dur);
+  let head = f;
+  if (e.type === 'night' || e.type === 'jungle') { const tr = ac.createGain(), lfo = ac.createOscillator(), lg = ac.createGain(); tr.gain.value = 0.5; lfo.type = 'square'; lfo.frequency.value = e.type === 'night' ? 17 : 31; lg.gain.value = 0.5; lfo.connect(lg); lg.connect(tr.gain); lfo.start(at); lfo.stop(at + e.dur + 0.05); f.connect(tr); head = tr; }
+  s.connect(f); head.connect(g); g.connect(p); p.connect(master); s.start(at, Math.random() * 1.5); s.stop(at + e.dur + 0.05);
+}
+// voices: each speaker babbles in its own register, a few syllables per line
+const VOICES = { cat: [330, 1500, 'triangle', 0.09, 0.115, 0.08], small: [760, 2600, 'square', 0.045, 0.085, 0.06], big: [110, 500, 'sawtooth', 0.1, 0.16, 0.13], mid: [240, 1100, 'triangle', 0.08, 0.12, 0.09],
+  croc: [85, 380, 'sawtooth', 0.11, 0.17, 0.14], tiger: [150, 700, 'sawtooth', 0.1, 0.14, 0.11], moon: [520, 2000, 'sine', 0.08, 0.2, 0.3] };
+function voiceSnd(at, e) {
+  const V = VOICES[e.voice] || VOICES.cat, vol = V[3] * S2.voices * (e.v || 1); if (vol <= 0) return;
+  for (let i = 0; i < e.n; i++) {
+    const t = at + i * V[4], d = V[5], f0 = V[0] * (0.85 + 0.4 * hh(i, e.seed)) * (i === e.n - 1 ? 0.88 : 1), o = ac.createOscillator(), bp = ac.createBiquadFilter(), g = ac.createGain();
+    o.type = V[2]; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f0 * (0.9 + 0.25 * hh(i, e.seed + 3)), t + d);
+    bp.type = 'bandpass'; bp.frequency.value = V[1] * (0.7 + 0.7 * hh(i, e.seed + 5)); bp.Q.value = 2.5;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(bp); bp.connect(g); g.connect(master); g.connect(wet); o.start(t); o.stop(t + d + 0.02);
+  }
+}
+function passSnd(at, e) {                              // a herd tearing past: the sound sweeps across the speakers and drops in pitch
+  const s = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain(), p = ac.createStereoPanner(), d = 0.95; s.buffer = noiseBuf; s.loop = true; bp.type = 'bandpass'; bp.Q.value = 0.9;
+  bp.frequency.setValueAtTime(2300, at); bp.frequency.exponentialRampToValueAtTime(420, at + d); p.pan.setValueAtTime(-0.75, at); p.pan.linearRampToValueAtTime(0.75, at + d);
+  g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.16 * e.v, at + d * 0.4); g.gain.exponentialRampToValueAtTime(0.0001, at + d);
+  s.connect(bp); bp.connect(g); g.connect(p); p.connect(master); s.start(at); s.stop(at + d + 0.05);
+  if (e.heavy) { const o = ac.createOscillator(), f = ac.createBiquadFilter(), og = ac.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(150, at); o.frequency.exponentialRampToValueAtTime(85, at + d); f.type = 'lowpass'; f.frequency.value = 420;
+    og.gain.setValueAtTime(0.0001, at); og.gain.exponentialRampToValueAtTime(0.08 * e.v, at + d * 0.45); og.gain.exponentialRampToValueAtTime(0.0001, at + d); o.connect(f); f.connect(og); og.connect(p); o.start(at); o.stop(at + d + 0.05); }
+}
+function roar2Snd(at) {                                // a full-throated roar: growl, breath and a deep body under it
+  const o = ac.createOscillator(), lfo = ac.createOscillator(), lg = ac.createGain(), f = ac.createBiquadFilter(), g = ac.createGain(), d = 1.7;
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(120, at); o.frequency.linearRampToValueAtTime(170, at + 0.25); o.frequency.linearRampToValueAtTime(78, at + d); lfo.frequency.value = 27; lg.gain.value = 16; lfo.connect(lg); lg.connect(o.frequency);
+  f.type = 'bandpass'; f.Q.value = 1.4; f.frequency.setValueAtTime(420, at); f.frequency.linearRampToValueAtTime(900, at + 0.3); f.frequency.linearRampToValueAtTime(380, at + d);
+  g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.34, at + 0.12); g.gain.setValueAtTime(0.3, at + 0.9); g.gain.exponentialRampToValueAtTime(0.0001, at + d);
+  o.connect(f); f.connect(g); g.connect(master); g.connect(wet); o.start(at); lfo.start(at); o.stop(at + d + 0.05); lfo.stop(at + d + 0.05);
+  noise(at, 1.4, 'bandpass', 650, 0.7, 0.11, 0, 0.5); noise(at, 1.0, 'lowpass', 120, 0.7, 0.16, 0, 0.3);
+}
+function gullSnd(at, pan) { for (let i = 0; i < 2; i++) { const t = at + i * 0.26, o = ac.createOscillator(), g = ac.createGain(), p = ac.createStereoPanner(); o.type = 'triangle'; o.frequency.setValueAtTime(1700, t); o.frequency.exponentialRampToValueAtTime(950, t + 0.2); p.pan.value = pan || 0;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.03, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); o.connect(g); g.connect(p); p.connect(master); o.start(t); o.stop(t + 0.25); } }
+
+(() => {                                               // compose and place everything
+  if (!S2) return;
+  const push = (tReal, ev) => { if (tReal >= 0 && tReal < REAL - 0.05) EVENTS.push({ ...ev, t: storyAt(tReal) }); };
+  // ---- the score, written on the real clock so the beat holds steady through slow motion ----
+  if (MUSIC && S2.music > 0) {
+    for (let i = EVENTS.length - 1; i >= 0; i--) if (EVENTS[i].k === 'note') EVENTS.splice(i, 1);     // the first score steps aside
+    // Scoring rules this follows (film / trailer practice):
+    //  1 one LEITMOTIF for the pack, stated, varied and finally played in full  2 TENSION AND RELEASE: one long build to a single climax, then release
+    //  3 SILENCE before the biggest hit only  4 HIT POINTS sit on the music: the grid is shifted so the climax lands on a downbeat
+    //  5 an OSTINATO drives the chase  6 BRAAMS and STINGERS mark threats  7 the melody LEAVES ROOM for dialogue
+    //  8 sync to picture sparingly (stabs on the big comic pops only)  9 a KEY LIFT into the triumph  10 a real CADENCE at the end
+    const r = rng((MUSIC.seed || 7) * 13 + 5), beat = 60 / MUSIC.bpm, bar = beat * 4, root0 = MUSIC.root, minor0 = !!MUSIC.minor;
+    const MIN = [0, 2, 3, 5, 7, 8, 10], MAJ = [0, 2, 4, 5, 7, 9, 11];
+    const PR = { pop: [0, 4, 5, 3], doo: [0, 5, 3, 4], sunny: [0, 3, 4, 3], dream: [0, 5, 1, 4], epic: [0, 5, 2, 6], hope: [0, 2, 5, 4], lift: [3, 4, 0, 0] }, prog0 = PR[MUSIC.prog || 'pop'];
+    const hits = (CFG.flashes || []).map(t => realOf(t)).sort((a, b) => a - b), endR = realOf(ENDAT), calm = (CFG.says || []).map(g => [realOf(g.t0), realOf(g.t1)]);
+    const climax = hits.length ? hits[hits.length - 1] : endR * 0.62, g0 = (climax % bar) - bar, resolveT = climax + bar * 0.75;
+    const key = t => t >= resolveT ? { root: minor0 ? root0 : root0 + 2, sc: MAJ, prog: minor0 ? [0, 4, 5, 3] : prog0 } : { root: root0, sc: minor0 ? MIN : MAJ, prog: prog0 };   // minor turns to major; major lifts a whole step
+    const deg = (d, oct, t) => { const k = key(t || 0); return k.root + k.sc[((d % 7) + 7) % 7] + 12 * (Math.floor(d / 7) + (oct || 0)); };
+    const talk = t => calm.some(([a, b]) => t > a - 0.15 && t < b + 0.1);
+    const energy = t => {                                // one long build to the climax, a release after it, smaller swells into the other hits
+      let e = t < 1.4 ? 0.85 : t < climax ? lerp(0.5, 0.8, clamp((t - 1.4) / Math.max(1, climax - 1.4))) : t < climax + 2.6 ? 1 : 0.7;
+      for (const h of hits) if (h !== climax) { if (t > h - 1.2 && t <= h) e = Math.max(e, 0.88); if (t > h && t < h + 1.6) e = Math.max(e, lerp(0.95, 0.6, (t - h) / 1.6)); }
+      if (talk(t)) e = Math.min(e, 0.5); if (MUSIC.soft) e *= 0.8; return e;
+    };
+    const gap = t => t > climax - 0.4 && t < climax - 0.005;                      // the breath before the climax
+    const P = (t, inst, m, len, v, pan) => { if (t >= endR - beat - 0.02 || gap(t)) return; push(Math.max(0, t + (r() - 0.5) * 0.01), { k: 'n2', inst, m, len, v: v * (0.92 + 0.16 * r()), pan }); };
+    // the pack's theme: a question phrase and an answer, 2 bars each (beat, scale degree, length)
+    const TQ = [[0, 0, 1], [1, 4, 1], [2, 3, 0.5], [2.5, 4, 0.5], [3, 5, 1], [4, 4, 1.5], [5.5, 2, 0.5], [6, 3, 1], [7, 1, 1]];
+    const TA = [[0, 0, 1], [1, 4, 1], [2, 3, 0.5], [2.5, 4, 0.5], [3, 7, 1], [4, 6, 1], [5, 4, 0.5], [5.5, 5, 0.5], [6, 4, 2]];
+    const snap = (d, ch) => { if (d % 1) return d; const tones = [ch, ch + 2, ch + 4, ch + 7, ch - 3, ch - 5].map(x => ((x % 7) + 7) % 7); let best = d; for (let k = 0; k <= 3; k++) { if (tones.includes(((d + k) % 7 + 7) % 7)) { best = d + k; break; } if (tones.includes(((d - k) % 7 + 7) % 7)) { best = d - k; break; } } return best; };
+    const lead = MUSIC.lead === 'brass' ? 'brass' : MUSIC.lead === 'flute' || MUSIC.lead === 'whistle' ? 'flute' : 'bell', kickI = MUSIC.epic ? 'taiko' : 'kick';
+    const OST = [0, 0, 12, 0, 0, 12, 0, 7, 0, 0, 12, 0, 7, 0, 12, 7], ACCN = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0];   // 3+3+2 accents: the pulse of a chase
+    const nb = Math.ceil((endR - g0) / bar);
+    for (let b = 0; b < nb; b++) {
+      const t0 = g0 + b * bar; if (t0 + bar < 0) continue;
+      const K = key(t0 + 0.01), ch = K.prog[b % 4], tri = [deg(ch, 0, t0), deg(ch + 2, 0, t0), deg(ch + 4, 0, t0)], e = energy(t0 + bar * 0.5), post = t0 >= resolveT - 0.01, preClimax = climax - t0 > 0 && climax - t0 <= bar * 2 + 0.01;
+      tri.forEach((m, i) => P(t0, 'strings', m, bar, 0.55 + 0.6 * e, [-0.4, 0, 0.4][i]));                          // pad
+      if (e > 0.75) P(t0, 'strings', deg(ch, 1, t0), bar, 0.6, 0);
+      if (e > 0.3) { P(t0, 'bass', deg(ch, -2, t0), beat * 1.4, 1); P(t0 + beat * 2, 'bass', deg(ch + 4, -2, t0), beat * 1.3, 0.85); if (e > 0.65) { P(t0 + beat * 1.5, 'bass', deg(ch, -2, t0), beat * 0.4, 0.7); P(t0 + beat * 3.5, 'bass', deg(ch + 2, -2, t0), beat * 0.4, 0.7); } }
+      if (e > 0.48) for (let k = 0; k < 16; k++) P(t0 + k * bar / 16, 'ostin', deg(ch, -1, t0) + OST[k], 0, (ACCN[k] ? 0.95 : 0.5) * (0.5 + 0.6 * e) * (preClimax ? 1.25 : 1), k % 2 ? 0.2 : -0.2);   // ostinato
+      if (e <= 0.6 || post) { const pat = [0, 1, 2, 1, 2, 0, 1, 2]; for (let k = 0; k < 8; k++) P(t0 + k * bar / 8, 'harp', tri[pat[k]] + 12, bar / 8, (k % 2 ? 0.45 : 0.75) * (post ? 0.8 : 0.6), k % 2 ? 0.35 : -0.35); }   // harp only where it is calm or bright
+      const ph = Math.floor(b / 2), T = ph % 2 ? TA : TQ;                                                     // the leitmotif, phrase by phrase
+      if (b > 0) for (const [nb2, d0, len] of T) { if (Math.floor(nb2 / 4) !== b % 2) continue; const tt = t0 + (nb2 % 4) * beat; if (talk(tt)) continue;
+        const d = snap(d0 + ch, ch), inst = post || e > 0.9 ? 'brass' : lead; P(tt, inst, deg(d, 1, tt), len * beat, post ? 1 : 0.85, -0.1);
+        if (post || e > 0.9) P(tt, 'bell', deg(d, 2, tt), len * beat, 0.35, 0.2); if (post) P(tt, 'strings', deg(d, 1, tt), len * beat, 0.8, 0.3); }
+      if (b > 0 || e > 0.7) for (let k = 0; k < 16; k++) { const tt = t0 + k * bar / 16, quiet = talk(tt);       // drums
+        if (k === 0 || (!quiet && (k === 8 || (e > 0.6 && k === 10) || (e > 0.85 && (k === 3 || k === 14))))) P(tt, kickI, 0, 0, (0.7 + 0.4 * e) * (quiet ? 0.6 : 1));
+        if (!quiet && (k === 4 || k === 12) && e > 0.45) P(tt, 'snare', 0, 0, 0.6 + 0.5 * e);
+        if (k % 2 === 0 && e > 0.35) P(tt, 'hat', 0, 0, (k % 4 ? 0.6 : 1) * e * (quiet ? 0.5 : 1), 0.25); else if (k % 2 && e > 0.8 && !quiet) P(tt, 'hat', 0, 0, 0.45, -0.25); }
+      if (preClimax && climax - t0 <= bar + 0.01) for (let i = 0; i < 12; i++) P(t0 + i * bar / 16, 'tom', 60 - i * 2, 0, 0.45 + 0.05 * i, -0.5 + i * 0.09);   // tom run into the drop
+      else if (b % 4 === 3 && e > 0.55 && !talk(t0 + beat * 3)) [0, 1, 2, 3].forEach(i => P(t0 + beat * 3 + i * beat / 4, 'tom', 55 - i * 4, 0, 0.7 + 0.1 * i, -0.4 + i * 0.27));
+    }
+    push(0.02, { k: 'n2', inst: 'braam', m: deg(0, -1, 0), len: 1.2, v: 1 }); push(0.02, { k: 'n2', inst: 'crash', v: 0.6 });   // the threat's first second: a braam
+    push(climax - bar * 2, { k: 'n2', inst: 'riser', len: bar * 2 - 0.4, v: 1.1 });                       // the climax: a two-bar build, a breath of silence, then everything
+    for (let i = 0; i < 16; i++) push(climax - bar - 0.4 + i * (bar - 0.4) / 16, { k: 'n2', inst: 'snare', v: 0.2 + 0.05 * i });
+    { const ch = key(climax - 0.01).prog[Math.round((climax - g0) / bar) % 4];
+      push(climax, { k: 'n2', inst: 'braam', m: deg(ch, -1, climax - 0.01), len: 1.6, v: 1.1 }); push(climax, { k: 'n2', inst: 'crash', v: 1 }); push(climax, { k: 'n2', inst: 'subdrop', v: 1 }); push(climax, { k: 'n2', inst: kickI, v: 1.3 }); push(climax, { k: 'duck' });
+      [0, 2, 4].forEach(d => push(climax, { k: 'n2', inst: 'brass', m: deg(ch + d, 0, climax - 0.01), len: 1.1, v: 0.95 })); }
+    for (const h of hits) if (h !== climax) {           // the smaller hits: a short swell and a stinger, no silence
+      push(h - 0.9, { k: 'n2', inst: 'riser', len: 0.85, v: 0.8 }); push(h, { k: 'n2', inst: 'crash', v: 0.8 }); push(h, { k: 'n2', inst: kickI, v: 1.15 }); push(h, { k: 'duck' });
+      [0, 4].forEach(d => push(h, { k: 'n2', inst: 'brass', m: deg(d, 0, h), len: 0.4, v: 0.85 })); }
+    for (const p of CFG.pops || []) { const t = realOf(p.t); if (p.shape === 'cloud') [0, 2, 4, 7].forEach((d, i) => push(t + i * 0.06, { k: 'n2', inst: 'bell', m: deg(d, 2, t), v: 0.5 }));
+      else if (!hits.some(h => Math.abs(h - t) < 0.3)) push(t, { k: 'n2', inst: 'brass', m: deg(4, 0, t), len: 0.18, v: 0.6 }); }   // a short stab on a comic pop
+    const theme = t => TA.slice(0, 4).forEach(([b, d], i) => push(t + i * 0.13, { k: 'n2', inst: 'bell', m: deg(d, 2, t), v: 0.85 }));   // the star sings the head of the theme
+    if (typeof STAR !== 'undefined' && STAR && STAR.from > 0) theme(realOf(STAR.from)); for (const t of CFG.motifs || []) theme(realOf(t));
+    const tE = endR - beat;                              // the cadence: the dominant, then home
+    [4, 6, 8].forEach((d, i) => push(tE, { k: 'n2', inst: 'brass', m: deg(d, 0, tE), len: beat * 0.9, v: 0.7, pan: [-0.3, 0, 0.3][i] })); push(tE, { k: 'n2', inst: 'bass', m: deg(4, -2, tE), len: beat, v: 0.9 });
+    push(endR, { k: 'n2', inst: 'bass', m: deg(0, -2, endR), len: 2, v: 1 }); [deg(0, 0, endR), deg(2, 0, endR), deg(4, 0, endR), deg(7, 0, endR)].forEach((m, i) => push(endR, { k: 'n2', inst: 'strings', m, len: 1.8, v: 0.9, pan: [-0.4, -0.1, 0.1, 0.4][i] }));
+    push(endR, { k: 'n2', inst: 'bell', m: deg(0, 2, endR), v: 0.8 }); push(endR, { k: 'n2', inst: 'crash', v: 0.35 }); push(endR, { k: 'n2', inst: kickI, v: 0.9 });
+  }
+  // ---- ambience beds ----
+  if (S2.beds > 0) {
+    const b0 = CFG.biomes[0][0], base = /dust|desert|canyon|beach|snow|summit|storm/.test(b0) ? ['wind', /dust/.test(b0) ? 0.06 : 0.035] : /jungle/.test(b0) ? ['jungle', 0.012] : /night|moon/.test(b0) ? ['night', 0.01] : ['wind', 0.015];
+    for (let t = 0; t < REAL; t += 4) {
+      const s = storyAt(t + 2);
+      push(t, { k: 'bed', type: base[0], dur: 4.6, v: base[1], pan: 0.15 * Math.sin(t) });
+      if (RIV) { const f = RIV.d0 - tab(TAB0.d, s); if (f < 600 && f > -RIV.w - 600) push(t, { k: 'bed', type: 'river', dur: 4.6, v: 0.035, pan: -0.2 }); }
+      if (CFG.ocean) push(t, { k: 'bed', type: 'ocean', dur: 4.6, v: 0.045 + (CFG.wall ? 0.06 * clamp(1 + (keyVal(CFG.wall.fx, s) + 400) / 1500) : 0), pan: -0.3 });
+    }
+    for (let t = 0; t < REAL; t += 1) {                  // a low rumble that swells as herds come near
+      const s = storyAt(t + 0.5); let lv = 0;
+      for (const h of HERDS) { const vm = tab(h.tb.v, s); if (vm < 80) continue; h.members.forEach((m, mi) => { const d = Math.hypot(herdFx(h, m, s), herdZ(h, m, mi, s) * 0.6); lv = Math.max(lv, clamp(1 - d / 2600) * clamp(vm / 300) * (h.sp.L > 100 ? 0.26 : 0.12)); }); }
+      if (lv > 0.012) push(t, { k: 'bed', type: 'rumble', dur: 1.5, v: lv });
+    }
+  }
+  // ---- voices ----
+  if (S2.voices > 0 && CFG.says) {
+    for (let i = EVENTS.length - 1; i >= 0; i--) if (EVENTS[i].k === 'say' && EVENTS[i].f !== 520) EVENTS.splice(i, 1);
+    CFG.says.forEach((g, i) => {
+      const hk = g.herd !== undefined ? CFG.herds[g.herd].kind : '', fc = g.friend !== undefined ? (CFG.friends[g.friend].coat || '') : '';
+      const voice = g.me ? 'cat' : g.scr ? 'moon' : g.back || g.pt ? 'small' : g.croc !== undefined ? 'croc' : g.friend !== undefined ? (/iger/.test(fc) ? 'tiger' : 'cat') : /elephant|hippo|buffalo|rhino/.test(hk) ? 'big' : hk ? 'mid' : 'cat';
+      EVENTS.push({ t: g.t0 + 0.05, k: 'voice', voice, n: Math.max(2, Math.min(9, Math.round(g.text.replace(/[^A-Za-z]/g, '').length / 3.5))), seed: i * 3.7 + 1 });
+    });
+  }
+  // ---- effects ----
+  for (const h of HERDS) if (h.dir < 0) { let prev = herdFx(h, h.members[0], 0); for (let t = 0.05; t < STORY - 0.3; t += 0.05) { const fx = herdFx(h, h.members[0], t); if (prev > 0 && fx <= 0) EVENTS.push({ t: Math.max(0, t - 0.3), k: 'pass', v: 1, heavy: h.sp.L > 100 }); prev = fx; } }
+  for (const R of CFG.shocks || []) EVENTS.push({ t: R.t, k: 'roar2' });
+  for (const c of CFG.critters || []) if (c.kind === 'gull') for (let t = (c.from || 0.6); t < Math.min(STORY - 0.5, c.until || STORY); t += 2.3) EVENTS.push({ t: t + 0.4, k: 'gullcry', pan: Math.sin(t) * 0.6 });
+  if (CFG.monkeys) for (let t = CFG.monkeys.from + 0.3; t < CFG.monkeys.until - 0.4; t += 1.2) EVENTS.push({ t, k: 'voice', voice: 'small', n: 5, seed: t * 2.1, v: 0.6 });
+})();

@@ -1,0 +1,37 @@
+// ---- the story: set by CFG (speeds over time, the lands it crosses, who it meets and what they say) ----
+const CFG = __CFG__;
+const STORY = CFG.dur, FIN = 1.2, FOUT = 2.0, SEND = +(params.get('end') || STORY);   // ?end=N cuts the story short with a fade at N s
+const RUN_V = 540;
+const SG = 330;                       // gallop stride: distance covered per gallop cycle
+const EVT = { acc0: 1e9, acc1: 1e9, slow0: 1e9, slow1: 1e9, lie0: 1e9, lie1: 1e9 };
+const VF = 3 * V * 2.2;               // the flat-out run
+const DRINK0 = CFG.drink ? CFG.drink.t : 1e9;   // heads go down to the water
+const JUMPS = [];
+let SD = 0, STL = 0, TALKW = 0;       // scenery distance, story time, and how hard the cat being drawn is talking
+const spd = x => x === 'run' ? 520 : x === 'walk' ? V : x === 'dash' ? VF : x;
+function keyVal(keys, t, f = x => x) {        // [[t, value], ...], eased between keys
+  if (t <= keys[0][0]) return f(keys[0][1]);
+  for (let i = 0; i < keys.length - 1; i++) if (t <= keys[i + 1][0]) return lerp(f(keys[i][1]), f(keys[i + 1][1]), smooth(clamp((t - keys[i][0]) / (keys[i + 1][0] - keys[i][0]))));
+  return f(keys[keys.length - 1][1]);
+}
+function speedAt(t) { return keyVal(CFG.speed, t, spd); }
+// how far the head is down at the water (0 = up). Each cat starts at its own moment, and once lifts its head to look around
+let DLAG = 0;
+function drinkAmt(tl, lag = DLAG) {
+  const s = tl - DRINK0 - lag, w = smooth(clamp(s / 1.3)), lk = 2.5 + lag * 1.6;
+  const look = smooth(clamp((s - lk) / 0.55)) * (1 - smooth(clamp((s - lk - 1.4) / 0.7)));
+  return w * (1 - 0.85 * look);
+}
+const TAB_DT = 1 / 120, TAB_N = Math.ceil(STORY / TAB_DT) + 2;
+function makeTab(fn) {                // distance, walk cycles and gallop cycles for a speed curve, integrated once
+  const T = { d: new Float64Array(TAB_N), w: new Float64Array(TAB_N), g: new Float64Array(TAB_N), v: new Float64Array(TAB_N) };
+  let d = 0, w = 0, g = 0;
+  for (let i = 0; i < TAB_N; i++) {
+    const v = fn(i * TAB_DT);
+    T.d[i] = d; T.w[i] = w; T.g[i] = g; T.v[i] = v;
+    d += v * TAB_DT; w += v * DUTY / STRIDE * TAB_DT; g += v / SG * TAB_DT;
+  }
+  return T;
+}
+const TAB0 = makeTab(speedAt);        // our pack
+let TAB = TAB0;                       // the table of the cat being drawn (others on the road keep their own pace)

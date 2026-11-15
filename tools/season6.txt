@@ -1,0 +1,171 @@
+// ---- SEASON 6: the Starcompass, little critters, riders on the cats' backs, the ocean, dust devils, a gorge, a roar ----
+const worldD = (t, df) => tab(TAB0.d, t) + (df || 0);            // a fixed place on the road: where the pack is at time t, plus df
+// the Starcompass: a glowing feather needle in a ring, bottom right
+function drawCompass() {
+  const C = CFG.compass; if (!C) return;
+  const a = smooth(clamp((STL - 2.6) / 0.5)) * (1 - smooth(clamp((STL - ENDAT) / 0.3))); if (a <= 0) return;
+  const r = S * 0.075, x = W - S * 0.06 - r, y = H - H * 0.035 - S * 0.07 - r, col = colAt(C.col || [[0, '#ffd76a']], STL).map(v => v | 0).join(',');
+  let ang = keyVal(C.ang, STL) * DEG; for (const [t0, t1] of C.spin || []) if (STL > t0) ang += smooth(clamp((STL - t0) / (t1 - t0))) * TAU * 3;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
+  ctx.globalCompositeOperation = 'lighter'; hzPuff(0, 0, r * 1.7, `rgba(${col},0.35)`, `rgba(${col},0.12)`, `rgba(${col},0)`); ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = 'rgba(10,8,22,0.72)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+  ctx.strokeStyle = `rgba(${col},0.95)`; ctx.lineWidth = S * 0.006; ctx.stroke();
+  ctx.lineWidth = S * 0.003; for (let k = 0; k < 8; k++) { const q = k * TAU / 8, l = k % 2 ? 0.1 : 0.18; ctx.beginPath(); ctx.moveTo(Math.cos(q) * r * (1 - l), Math.sin(q) * r * (1 - l)); ctx.lineTo(Math.cos(q) * r * 0.97, Math.sin(q) * r * 0.97); ctx.stroke(); }
+  ctx.rotate(ang);                                                      // the feather needle
+  const g = ctx.createLinearGradient(0, r * 0.8, 0, -r * 0.85); g.addColorStop(0, 'rgba(255,255,255,0.4)'); g.addColorStop(1, `rgba(${col},1)`);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, -r * 0.85); ctx.quadraticCurveTo(r * 0.24, -r * 0.2, 0, r * 0.62); ctx.quadraticCurveTo(-r * 0.24, -r * 0.2, 0, -r * 0.85); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = S * 0.0025; ctx.beginPath(); ctx.moveTo(0, -r * 0.8); ctx.lineTo(0, r * 0.7); ctx.stroke();
+  for (let k = 1; k < 6; k++) { const yy = -r * 0.7 + k * r * 0.22; ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(r * 0.16, yy - r * 0.1); ctx.moveTo(0, yy); ctx.lineTo(-r * 0.16, yy - r * 0.1); ctx.stroke(); }
+  ctx.rotate(-ang); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, S * 0.006, 0, TAU); ctx.fill();
+  ctx.fillStyle = `rgba(${col},0.9)`; ctx.textAlign = 'center'; ctx.font = `700 ${Math.round(S * 0.016)}px "Segoe UI", system-ui, sans-serif`; try { ctx.letterSpacing = `${Math.round(S * 0.005)}px`; } catch (e) {}
+  ctx.fillText('STARCOMPASS', 0, r + S * 0.03); try { ctx.letterSpacing = '0px'; } catch (e) {}
+  ctx.restore();
+}
+// ---- critters: small sprites, drawn at points in the world ----
+const SPR = {
+  otter(x, y, s, t) { ctx.fillStyle = '#7a5134'; ctx.beginPath(); ctx.ellipse(0 + x, y, s * 1.3, s * 0.55, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = '#6a442a'; ctx.lineWidth = s * 0.35; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - s * 1.1, y + s * 0.1); ctx.quadraticCurveTo(x - s * 2, y + s * 0.4 + s * 0.3 * Math.sin(t * 5), x - s * 2.4, y - s * 0.2); ctx.stroke();
+    ctx.fillStyle = '#8a5d3c'; ctx.beginPath(); ctx.arc(x + s * 1.25, y - s * 0.35, s * 0.62, 0, TAU); ctx.fill(); ctx.fillStyle = '#e8d2b8'; ctx.beginPath(); ctx.ellipse(x + s * 1.55, y - s * 0.2, s * 0.35, s * 0.25, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x + s * 1.45, y - s * 0.55, s * 0.12, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x + s * 1.82, y - s * 0.28, s * 0.1, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x + s * 1.42, y - s * 0.6, s * 0.045, 0, TAU); ctx.fill(); ctx.fillStyle = '#6a442a'; ctx.beginPath(); ctx.arc(x + s * 1.0, y - s * 0.85, s * 0.17, 0, TAU); ctx.fill(); },
+  meerkat(x, y, s, t, i) { const b = Math.sin(t * 3 + i) * s * 0.05; ctx.fillStyle = '#c9a26c'; ctx.beginPath(); ctx.ellipse(x, y - s * 1.1 + b, s * 0.42, s * 1.0, 0, 0, TAU); ctx.fill(); ctx.fillStyle = '#e6cfa4'; ctx.beginPath(); ctx.ellipse(x + s * 0.08, y - s * 1.0 + b, s * 0.22, s * 0.7, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#c9a26c'; ctx.beginPath(); ctx.ellipse(x + s * 0.12, y - s * 2.2 + b, s * 0.3, s * 0.36, 0.3, 0, TAU); ctx.fill(); ctx.fillStyle = '#2a1e14'; ctx.beginPath(); ctx.ellipse(x + s * 0.2, y - s * 2.24 + b, s * 0.11, s * 0.08, 0, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x + s * 0.42, y - s * 2.12 + b, s * 0.05, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#a8814e'; ctx.lineWidth = s * 0.14; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x + s * 0.2, y - s * 1.6 + b); ctx.lineTo(x + s * 0.4, y - s * 1.3 + b); ctx.stroke(); },
+  crab(x, y, s, t, i) { const w = Math.sin(t * 9 + i) * s * 0.12; ctx.strokeStyle = '#c23a22'; ctx.lineWidth = s * 0.12; ctx.lineCap = 'round';
+    for (const sg of [-1, 1]) for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(x + sg * s * 0.4, y); ctx.lineTo(x + sg * s * (0.9 + k * 0.12), y + s * (0.15 + k * 0.15) + (k % 2 ? w : -w)); ctx.stroke(); }
+    ctx.fillStyle = '#e04a2c'; ctx.beginPath(); ctx.ellipse(x, y - s * 0.1, s * 0.6, s * 0.38, 0, 0, TAU); ctx.fill(); for (const sg of [-1, 1]) { ctx.beginPath(); ctx.arc(x + sg * s * 0.85, y - s * 0.45 + w, s * 0.24, 0, TAU); ctx.fill(); }
+    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x - s * 0.15, y - s * 0.45, s * 0.07, 0, TAU); ctx.arc(x + s * 0.15, y - s * 0.45, s * 0.07, 0, TAU); ctx.fill(); },
+  turtle(x, y, s, t, i) { const fl = Math.sin(t * 8 + i * 1.7) * 0.4; ctx.fillStyle = '#4e7a3c'; for (const [dx, dy, a] of [[0.55, -0.35, -0.6 + fl], [0.55, 0.35, 0.6 - fl], [-0.5, -0.3, -2.4 - fl], [-0.5, 0.3, 2.4 + fl]]) { ctx.beginPath(); ctx.ellipse(x + dx * s, y + dy * s * 0.6, s * 0.32, s * 0.12, a, 0, TAU); ctx.fill(); }
+    ctx.fillStyle = '#5e8c48'; ctx.beginPath(); ctx.arc(x + s * 0.75, y, s * 0.2, 0, TAU); ctx.fill(); ctx.fillStyle = '#2f4a22'; ctx.beginPath(); ctx.ellipse(x, y, s * 0.6, s * 0.42, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,200,120,0.6)'; ctx.lineWidth = s * 0.06; ctx.beginPath(); ctx.ellipse(x, y, s * 0.3, s * 0.2, 0, 0, TAU); ctx.stroke(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x + s * 0.86, y - s * 0.06, s * 0.05, 0, TAU); ctx.fill(); },
+  gull(x, y, s, t, i) { const fl = Math.sin(t * 7 + i * 2.1); ctx.fillStyle = '#f4f4f0'; ctx.beginPath(); ctx.ellipse(x, y, s * 0.6, s * 0.22, 0, 0, TAU); ctx.fill(); ctx.fillStyle = '#c8ccd2';
+    for (const sg of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x - s * 0.1, y); ctx.quadraticCurveTo(x + sg * s * 0.2, y - s * 0.9 * fl, x - s * 0.5 + sg * s * 0.1, y - s * 1.3 * fl); ctx.lineTo(x + s * 0.2, y); ctx.closePath(); ctx.fill(); }
+    ctx.fillStyle = '#f2b030'; ctx.beginPath(); ctx.moveTo(x + s * 0.6, y - s * 0.04); ctx.lineTo(x + s * 0.85, y + s * 0.02); ctx.lineTo(x + s * 0.6, y + s * 0.08); ctx.fill(); },
+  tumbleweed(x, y, s, t, i) { ctx.save(); ctx.translate(x, y - s); ctx.rotate(t * 4 + i); ctx.strokeStyle = '#a07a44'; ctx.lineWidth = Math.max(1, s * 0.07);
+    for (let k = 0; k < 9; k++) { ctx.beginPath(); ctx.ellipse(0, 0, s * (0.6 + 0.4 * hh(k, i)), s * (0.4 + 0.5 * hh(k, i + 3)), k * 0.7, 0, TAU); ctx.stroke(); } ctx.restore(); },
+};
+const CRIT = (CFG.critters || []).map((c, gi) => { const r = rng(100 + gi), a = []; for (let i = 0; i < (c.n || 1); i++) a.push({ df: lerp(c.f[0], c.f[1], r()), z: lerp(c.z[0], c.z[1], r()), ph: r() * TAU, s: 0.8 + r() * 0.4 }); return { ...c, D: worldD(c.at || 0, 0), m: a }; });
+function critPos(c, m, i) {
+  const age = STL - (c.t0 === undefined ? -99 : c.t0);
+  let f = c.D + m.df - SD, z = m.z, hg = c.hg || 0;
+  if (c.kind === 'crab') z += 60 * Math.sin(STL * 2 + m.ph);
+  if (c.kind === 'turtle' && age > 0) z -= age * (c.vz || 90);
+  if (c.kind === 'tumbleweed') { z += ((STL * (c.vz || 600) + m.ph * 400) % 5200) - 2600; hg = Math.abs(Math.sin(STL * 3 + m.ph)) * 60; }
+  if (c.kind === 'gull') { const a = STL * 0.9 + m.ph; f += 300 * Math.cos(a); z += 300 * Math.sin(a); hg = 380 + 120 * Math.sin(STL * 1.3 + m.ph); if (c.dive && STL > c.dive[0] && STL < c.dive[1]) hg -= 220 * Math.sin(Math.PI * (STL - c.dive[0]) / (c.dive[1] - c.dive[0])); }
+  return { f, z, hg };
+}
+function drawCritters(front) {
+  CRIT.forEach(c => c.m.forEach((m, i) => {
+    if (c.until !== undefined && STL > c.until) return; if (c.from !== undefined && STL < c.from) return;
+    const p = critPos(c, m, i); if (!hzVis(p.f, p.z) || (hzDepth(p.f, p.z) < -40) !== front) return;
+    const q = P3s(p.f, p.hg, p.z), s = (c.size || 22) * 2.3 * m.s * hzK(p.f, p.hg, p.z); if (s < 0.7) return;
+    SPR[c.kind](q[0], q[1], s, STL, i);
+  }));
+}
+// riders: a small friend on a cat's back
+function drawRiders() {
+  for (const r of CFG.riders || []) {
+    if (STL < r.from || (r.until !== undefined && STL > r.until)) continue;
+    const a = r.cat === undefined ? { fx: 0, z: 0, size: 1 } : OURS[r.cat], f = a.fx + (r.dx || -10), z = a.z, hg = 205 * (a.size || 1) + 6 * Math.abs(Math.sin(STL * 9));
+    if (!hzVis(f, z)) continue; const q = P3s(f, hg, z), s = (r.size || 16) * 2.2 * hzK(f, hg, z);
+    SPR[r.kind](q[0], q[1], s, STL, r.i || 0);
+  }
+}
+// a log floating in the river, where a small friend waits
+function drawLogs() {
+  for (const L of CFG.logs || []) {
+    const f = worldD(L.at, L.df) - SD, z = L.z, len = L.len || 300; if (!hzVis(f - len / 2, z) || !hzVis(f + len / 2, z)) continue;
+    const bob = 6 * Math.sin(STL * 2.4), P = hzBand(f - len / 2, f + len / 2, z - 34, z + 34, 4, 22 + bob); hzFill(P, '#6b4528');
+    const top = hzBand(f - len / 2, f + len / 2, z - 14, z + 8, 3, 30 + bob); hzFill(top, '#8a5c34');
+    const e = P3s(f + len / 2, 22 + bob, z), er = 34 * hzK(f + len / 2, 22, z); ctx.fillStyle = '#c8a070'; ctx.beginPath(); ctx.ellipse(e[0], e[1], er * 0.6, er, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#8a5c34'; ctx.lineWidth = Math.max(1, er * 0.08); ctx.beginPath(); ctx.ellipse(e[0], e[1], er * 0.35, er * 0.6, 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1, 2 * sc); const rg = hzRing(f, z, len * 0.65, 70); ctx.beginPath(); rg.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
+    if (L.rider && STL < L.rider.until) { const q = P3s(f + 30, 52 + bob, z), s = 40 * hzK(f, 52, z); SPR[L.rider.kind](q[0], q[1], s, STL, 0); }
+  }
+}
+function drawShoal() {                                                 // the otters' secret shallow: a pale sandy lane across the river
+  const S0 = CFG.shoal; if (!S0 || STL < S0.from) return; const k = smooth(clamp((STL - S0.from) / 0.8));
+  ctx.globalAlpha = 0.75 * k; hzFill(hzBand(worldD(S0.at, S0.df0) - SD, worldD(S0.at, S0.df1) - SD, S0.z0, S0.z1, 12), '#c9b88a'); ctx.globalAlpha = 1;
+}
+// the ocean along the far side of the beach, with foam rolling in
+function drawOcean(t) {
+  const O = CFG.ocean; if (!O) return; const z = O.z;
+  hzFill(hzBand(-14000, 14000, -12000, z, 20), '#2f8fb0'); hzFill(hzBand(-14000, 14000, z - 600, z, 10), '#4fb4cc');
+  hzFill(hzBand(-14000, 14000, z, z + 160, 4), '#d8c48e');                                    // wet sand
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = Math.max(1.5, 3 * sc);
+  for (let k = 0; k < 3; k++) { const zz = z - ((t * 120 + k * 200) % 600); ctx.globalAlpha = 1 - ((t * 120 + k * 200) % 600) / 600; ctx.beginPath(); let first = true;
+    for (let f = -8000; f <= 9000; f += 220) { if (!hzVis(f, zz)) { first = true; continue; } const p = P3s(f, 0, zz + 40 * Math.sin(f * 0.004 + t + k)); first ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]); first = false; } ctx.stroke(); }
+  ctx.globalAlpha = 1;
+}
+// dust devils: spinning funnels of sand
+function twisterAt(T) { return { f: keyVal(T.fx, STL), z: keyVal(T.z, STL) }; }
+function drawTwister(T, t) {
+  const { f, z } = twisterAt(T); if (!hzVis(f, z)) return; const H0 = T.h || 1500;
+  ctx.globalCompositeOperation = 'source-over';
+  for (let k = 0; k <= 22; k++) {
+    const u = k / 22, hg = u * H0, r = (50 + 520 * Math.pow(u, 1.6)) * (1 + 0.08 * Math.sin(t * 6 + k)), sway = 90 * Math.sin(t * 1.4 + u * 3) * u, p = P3s(f + sway, hg, z), kk = hzK(f, hg, z);
+    const rx = r * kk, ry = rx * 0.28; if (rx < 1) continue;
+    ctx.globalAlpha = clamp(1.5 - rx / (W * 0.45), 0.22, 1);             // right on top of the camera it thins out, so the pack stays readable
+    const g = ctx.createRadialGradient(p[0] - rx * 0.25, p[1], rx * 0.05, p[0], p[1], rx); g.addColorStop(0, `rgba(214,176,124,${0.55 + 0.2 * (1 - u)})`); g.addColorStop(0.5, `rgba(150,106,64,${0.62 + 0.25 * (1 - u)})`); g.addColorStop(0.85, 'rgba(118,82,50,0.4)'); g.addColorStop(1, 'rgba(118,82,50,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(p[0], p[1], rx, ry + rx * 0.2, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = `rgba(90,60,36,${0.5 * (1 - u * 0.5)})`; ctx.lineWidth = Math.max(1, 3.5 * kk); ctx.beginPath(); ctx.ellipse(p[0], p[1], rx * 0.8, ry, 0, t * 5 + k, t * 5 + k + 2.2); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,232,190,${0.3 * (1 - u * 0.4)})`; ctx.lineWidth = Math.max(1, 2 * kk); ctx.beginPath(); ctx.ellipse(p[0], p[1], rx * 0.7, ry * 0.9, 0, t * 5 + k + 3.4, t * 5 + k + 4.6); ctx.stroke();
+  }
+  ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(84,58,36,0.9)';              // twigs and grit whirling around it
+  for (let i = 0; i < 26; i++) { const a = t * (3 + hh(i, 1)) + i * 2.3, u = frac(hh(i, 2) + t * 0.12), rr = (80 + 420 * Math.pow(u, 1.6)), q = P3s(f + Math.cos(a) * rr, u * H0, z + Math.sin(a) * rr * 0.6), s = Math.min(S * 0.012, (3 + 5 * hh(i, 3)) * hzK(f, u * H0, z));
+    if (s < 0.6) continue; ctx.save(); ctx.translate(q[0], q[1]); ctx.rotate(t * (6 + 5 * hh(i, 4)) + i); ctx.beginPath(); ctx.moveTo(-s, -s * 0.2); ctx.lineTo(s, -s * 0.35); ctx.lineTo(s * 0.7, s * 0.3); ctx.lineTo(-s * 0.8, s * 0.25); ctx.closePath(); ctx.fill(); ctx.restore(); }
+}
+function drawTwisters(t, front) { for (const T of CFG.twisters || []) { if (T.from !== undefined && STL < T.from) continue; const { f, z } = twisterAt(T); if ((hzDepth(f, z) < 0) === front) drawTwister(T, t); } }
+// a gorge across the road, bridged by planks that snap after the pack is over
+const GORGE = CFG.gorge ? { ...CFG.gorge, D: worldD(CFG.gorge.at, 0) } : null;
+function drawGorge() {
+  if (!GORGE) return; const fa = GORGE.D - SD, fb = fa + GORGE.w, ga = clamp((5200 - fa) / 2200); if (ga <= 0) return;   // it fades in out of the haze
+  ctx.save(); ctx.globalAlpha = ga;
+  hzFill(hzBand(fa - 50, fb + 50, -6000, 6000, 30), '#6a4a2c');                    // the sunlit lip
+  hzFill(hzBand(fa - 10, fb + 10, -6000, 6000, 30), '#3a2818');                    // rock walls going down
+  hzFill(hzBand(fa + GORGE.w * 0.2, fb - GORGE.w * 0.2, -6000, 6000, 30), '#1a1410');  // the shadowed depths
+  ctx.restore();
+  const snap = GORGE.snap !== undefined ? STL - GORGE.snap : -1;
+  for (let k = 0; k < 12; k++) {
+    const u0 = k / 12, f0 = lerp(fa - 30, fb + 30, u0), f1 = f0 + (fb - fa + 60) / 12 - 8, drop = snap > 0 ? 900 * snap * snap * (0.6 + 0.8 * hh(k, 4)) : 0; if (drop > 2500) continue;
+    const sag = 40 * Math.sin(Math.PI * (u0 + 0.04)), P = hzBand(f0, f1, -230, 230, 3, 8 - sag - drop); if (P) { ctx.globalAlpha = ga * clamp(1 - drop / 2500); hzFill(P, k % 2 ? '#8a6038' : '#7a522e'); ctx.globalAlpha = 1; }
+  }
+  ctx.globalAlpha = ga; ctx.strokeStyle = '#d8c090'; ctx.lineWidth = Math.max(1, 3 * sc);  for (const z of [-250, 250]) { ctx.beginPath(); let first = true; for (let u = 0; u <= 1.001; u += 0.1) { const f = lerp(fa - 60, fb + 60, u), hg = (snap > 0 && u > 0.1 && u < 0.9 ? -900 * snap * snap : 0) + 90 - 40 * Math.sin(Math.PI * u); if (!hzVis(f, z)) { first = true; continue; } const p = P3s(f, hg, z); first ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]); first = false; } ctx.stroke(); }
+  ctx.globalAlpha = 1;
+}
+// monkeys swinging from the canopy, at the top of the screen
+function drawMonkeys(t) {
+  const M = CFG.monkeys; if (!M || STL < M.from || STL > M.until) return; const k = smooth(clamp((STL - M.from) / 0.5)) * (1 - smooth(clamp((STL - M.until + 0.5) / 0.5)));
+  for (let i = 0; i < M.n; i++) {
+    const ax = W * (0.1 + 0.8 * hh(i, 2.2)) + Math.sin(t * 0.5 + i) * S * 0.05, len = H * (0.12 + 0.12 * hh(i, 3.3)), sw = 0.6 * Math.sin(t * (1.6 + 0.5 * hh(i, 4)) + i * 2), x = ax + Math.sin(sw) * len, y = H * 0.035 + Math.cos(sw) * len * k, s = S * 0.025;
+    ctx.strokeStyle = '#2e4a1e'; ctx.lineWidth = Math.max(1, S * 0.004); ctx.beginPath(); ctx.moveTo(ax, 0); ctx.lineTo(x, y); ctx.stroke();
+    ctx.fillStyle = '#5a3a22'; ctx.beginPath(); ctx.arc(x, y + s * 1.1, s, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x, y + s * 0.1, s * 0.62, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#d8b08a'; ctx.beginPath(); ctx.ellipse(x, y + s * 0.2, s * 0.4, s * 0.32, 0, 0, TAU); ctx.fill(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x - s * 0.15, y + s * 0.1, s * 0.07, 0, TAU); ctx.arc(x + s * 0.15, y + s * 0.1, s * 0.07, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#5a3a22'; ctx.lineWidth = s * 0.25; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y + s * 1.8); ctx.quadraticCurveTo(x + s * 1.6, y + s * 2.6, x + s * 1.2 * Math.sin(t * 2 + i), y + s * 3.4); ctx.stroke();
+    if (M.fruit && hh(i, 9) > 0.4) { const ft = frac(t * 0.5 + hh(i, 5)), fy = y + s * 2 + ft * H * 0.5; ctx.fillStyle = i % 2 ? '#ffcc33' : '#ff6b3a'; ctx.globalAlpha = 1 - ft; ctx.beginPath(); ctx.arc(x + s, fy, s * 0.35, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+  }
+}
+// a roar you can see: rings of force spreading from the one who roars
+function drawShocks() {
+  for (const R of CFG.shocks || []) {
+    const d = STL - R.t; if (d < 0 || d > 1.4) continue;
+    const fr = R.friend !== undefined ? FRIENDS[R.friend] : null, f = fr ? friendFx(fr, STL) + 120 : 120, z = fr ? friendZ(fr, STL) : 0; if (!hzVis(f, z)) continue;
+    for (let k = 0; k < 3; k++) { const dd = d - k * 0.16; if (dd < 0) continue; const rg = hzRing(f, z, 150 + 1600 * dd, 110 + 1100 * dd, 40); ctx.strokeStyle = `rgba(255,${200 - k * 40},${120 - k * 30},${0.75 * (1 - dd / 1.4)})`; ctx.lineWidth = Math.max(1, S * 0.008 * (1 - dd / 1.4)); ctx.beginPath(); rg.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke(); }
+  }
+}
+// hippos throw up curtains of spray as they charge through the water
+function drawSprayCurtains(t) {
+  for (const h of HERDS) { if (!h.spray) continue; const vm = tab(h.tb.v, STL); if (vm < 60) continue;
+    h.members.forEach((m, mi) => { const f = herdFx(h, m, STL), z = herdZ(h, m, mi, STL); if (!inRiver(f) || !hzVis(f, z)) return; const k = hzK(f, 0, z), sz = m.size || 1;
+      ctx.fillStyle = 'rgba(235,248,255,0.85)';
+      for (let i = 0; i < 26; i++) { const ph = frac(t * 2.6 + hh(i, mi + 1)), side = i % 2 ? 1 : -1, q = P3s(f + h.dir * (60 + 120 * ph) * sz, 280 * sz * Math.sin(Math.PI * ph) * (0.5 + hh(i, 3)), z + side * (60 + 220 * ph) * sz); ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(1, (7 + 7 * hh(i, 4)) * k * sz * (1 - ph * 0.6)), 0, TAU); ctx.fill(); }
+    }); }
+}
+function s6Before(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawOcean(t); drawGorge(); drawShoal(); drawLogs(); drawCritters(false); drawTwisters(t, false); }
+function s6After(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawSprayCurtains(t); drawCritters(true); drawRiders(); drawTwisters(t, true); drawShocks(); drawMonkeys(t); }
+(() => {                                                                // their sounds
+  for (const R of CFG.shocks || []) { EVENTS.push({ t: R.t, k: 'roar' }); EVENTS.push({ t: R.t + 0.02, k: 'boom' }); }
+  if (CFG.twisters) for (let t = 0.05; t < STORY - 0.2; t += 0.15) EVENTS.push({ t, k: 'hiss', v: 0.07 });
+  if (GORGE && GORGE.snap !== undefined) { EVENTS.push({ t: GORGE.snap, k: 'crack', v: 0.3 }); for (let i = 1; i < 6; i++) EVENTS.push({ t: GORGE.snap + 0.6 + i * 0.13, k: 'thud', v: 0.12 }); }
+  if (CFG.ocean) for (let t = 0.2; t < STORY - 0.5; t += 2.1) EVENTS.push({ t, k: 'hiss', v: 0.06 });
+  for (const c of CFG.critters || []) if (c.kind === 'gull') for (let t = (c.from || 0.5); t < Math.min(STORY - 0.4, c.until || STORY); t += 1.7) EVENTS.push({ t, k: 'tweet', v: 0.6, f: 2100, pan: 0.3 });
+})();

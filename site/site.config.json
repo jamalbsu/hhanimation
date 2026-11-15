@@ -1,0 +1,25 @@
+{
+  "siteUrl": "https://happyhillz.com",
+  "brand": "Happy Hillz",
+  "series": "Panthers Pack",
+  "channel": {
+    "handle": "@HappyHillz",
+    "id": "UCno2mEyfAiZiZqnl555zM0A"
+  },
+  "trailer": {
+    "page": "src/trailer/panthera-24-head-on-elephant-herd.html",
+    "episode": "Head-On Elephant Herd",
+    "label": "Head-On: Elephant Herd"
+  },
+  "featured": {
+    "count": 6,
+    "exclude": [
+      "Buffalo River",
+      "Zebra Crossing",
+      "Sand Avalanche",
+      "Rhino Fog",
+      "Storm Wall"
+    ]
+  },
+  "forceHttps": true
+}

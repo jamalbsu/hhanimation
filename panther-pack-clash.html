@@ -1,0 +1,1562 @@
+<title>Panther Pack Clash</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* One full-bleed canvas stage; a single "tap to begin" veil for sound. Night-only look. */
+  :root {
+    --bg: #070a12;
+    --ink: #cfdcff;
+    --ink-dim: rgba(207, 220, 255, 0.55);
+    --veil: rgba(5, 7, 14, 0.62);
+    --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color-scheme: dark;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+  body { font-family: var(--font-ui); cursor: none; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+  #overlay {
+    position: fixed; inset: 0; z-index: 10; cursor: pointer;
+    display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center;
+    background: var(--veil); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    transition: opacity 0.9s;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+  #overlay .go { color: var(--ink); font-weight: 300; font-size: 1.2rem; letter-spacing: 0.2em; text-transform: uppercase; animation: pulse 2.2s ease-in-out infinite; }
+  #overlay .sub { color: var(--ink-dim); font-size: 0.85rem; letter-spacing: 0.04em; }
+  @keyframes pulse { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { #overlay .go { animation: none; } }
+  body.clean #overlay { display: none; }
+</style>
+
+<canvas id="c"></canvas>
+<div id="overlay" role="button" tabindex="0" aria-label="Start with sound">
+  <span class="go">Tap to begin</span>
+  <span class="sub">Daylight walk</span>
+</div>
+
+<script>
+// ============================================================================
+//  Moonlit Panther — a black panther walking endlessly through a night jungle.
+//  Everything is drawn from code (vector paths) each frame.
+//  Rig: a 2D skeleton with a lateral-sequence walk (LH → LF → RH → RF),
+//  2-bone IK for each leg, flexing spine, rolling shoulder blades, swaying tail.
+// ============================================================================
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+const DEG = Math.PI / 180;
+
+// ---- timing: everything repeats every LOOP seconds, so a render loops seamlessly
+const T = 1.5;                 // one full stride cycle (s)
+const LOOP = T * 24;           // 36 s
+const W0 = TAU / LOOP;
+const DUTY = 0.64;             // share of the cycle each paw is on the ground
+const STRIDE = 112;            // paw travel per stance, in body units
+const V = STRIDE / (DUTY * T); // ground speed, body units / s
+
+const params = new URLSearchParams(location.search);
+if (params.has('clean')) document.body.classList.add('clean');
+const T0 = +(params.get('t0') || 0);
+
+// ---- helpers
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = x => x * x * (3 - 2 * x);
+const frac = x => x - Math.floor(x);
+const dir = a => [Math.cos(a * DEG), Math.sin(a * DEG)];
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function keyframes(k, s) {                  // k = [[s0,v0],[s1,v1],...], smooth between keys
+  for (let i = 0; i < k.length - 1; i++) if (s <= k[i + 1][0]) {
+    const u = (s - k[i][0]) / (k[i + 1][0] - k[i][0]);
+    return lerp(k[i][1], k[i + 1][1], smooth(clamp(u)));
+  }
+  return k[k.length - 1][1];
+}
+function splinePath(c, pts, closed = true) {   // Catmull-Rom through points
+  const n = pts.length, P = i => pts[closed ? (i + n) % n : clamp(i, 0, n - 1)];
+  c.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < (closed ? n : n - 1); i++) {
+    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    c.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6,
+                    p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
+  }
+  if (closed) c.closePath();
+}
+function capsule(c, ax, ay, ar, bx, by, br) {     // tapered limb segment
+  const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || 1e-3, a = Math.atan2(dy, dx);
+  const s = Math.asin(clamp((ar - br) / d, -1, 1));
+  c.beginPath();
+  c.arc(ax, ay, ar, a + Math.PI / 2 - s, a + Math.PI * 1.5 + s);
+  c.arc(bx, by, br, a - Math.PI / 2 + s, a + Math.PI / 2 - s);
+  c.closePath(); c.fill();
+}
+function ik(ax, ay, bx, by, l1, l2, bend) {       // 2-bone IK → middle joint
+  const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy), base = Math.atan2(dy, dx);
+  if (d >= l1 + l2 - 0.01) { const r = l1 / (l1 + l2); return [ax + dx * r, ay + dy * r]; }
+  const a = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  return [ax + l1 * Math.cos(base + bend * a), ay + l1 * Math.sin(base + bend * a)];
+}
+
+// ---- gait ---------------------------------------------------------------------
+// Panther faces right; the viewer sees its left side, so L legs are near, R legs far.
+// Hind paws are centred just behind the hip (x0 = -105, hip at -93) so each one lands
+// roughly in the print the fore paw on the same side just left, and pushes off behind the rump.
+const LEGS = [
+  { id: 'RH', far: true,  hind: true,  off: 0.50, x0: -105 },
+  { id: 'RF', far: true,  hind: false, off: 0.75, x0: 104 },
+  { id: 'LH', far: false, hind: true,  off: 0.00, x0: -105 },
+  { id: 'LF', far: false, hind: false, off: 0.25, x0: 104 },
+];
+const HIP = [-93, -130];                 // hip joint, body coords
+const THIGH = 54, SHIN = 58, METATARSUS = 36;
+// paw "roll" angle (deg) over the swing: lifts, curls back, reaches forward, plants
+const FRONT_SWING = [[0, 116], [0.3, 168], [0.62, 95], [0.86, 58], [1, 70]];
+const HIND_SWING  = [[0, 116], [0.32, 150], [0.66, 80], [0.88, 60], [1, 68]];   // starts/ends where the stance angle does
+
+function footState(leg, c) {                 // c = walk cycles so far
+  const p = frac(c + leg.off);
+  if (p < DUTY) {
+    const s = p / DUTY;
+    return { fx: leg.x0 + STRIDE * (0.5 - s), fy: 0, stance: true, s,
+             ang: leg.hind ? 68 + 48 * s * s : 70 + 46 * s * s };
+  }
+  const s = (p - DUTY) / (1 - DUTY);
+  const e = s - Math.sin(TAU * s) / TAU;
+  const lift = leg.hind ? 17 : 22;
+  return { fx: leg.x0 + STRIDE * (-0.5 + e), fy: -lift * Math.sin(Math.PI * Math.pow(s, 0.8)), stance: false, s,
+           ang: keyframes(leg.hind ? HIND_SWING : FRONT_SWING, s) };
+}
+
+// ---- curve helpers ---------------------------------------------------------------
+function cr(p0, p1, p2, p3, u) {              // Catmull-Rom on numbers
+  const u2 = u * u, u3 = u2 * u;
+  return 0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (3 * p1 - p0 - 3 * p2 + p3) * u3);
+}
+function keyCR(k, s) {                         // smooth curve through [time, value] keys
+  if (s <= k[0][0]) return k[0][1];
+  if (s >= k[k.length - 1][0]) return k[k.length - 1][1];
+  let i = 0; while (s > k[i + 1][0]) i++;
+  const u = (s - k[i][0]) / (k[i + 1][0] - k[i][0]);
+  const v = j => k[clamp(j, 0, k.length - 1)][1];
+  return cr(v(i - 1), v(i), v(i + 1), v(i + 2), u);
+}
+function keyP(k, s) {                          // same, repeating; first and last key hold the same value
+  s = frac(s); const n = k.length - 1;
+  let i = 0; while (i < n - 1 && s > k[i + 1][0]) i++;
+  const u = (s - k[i][0]) / (k[i + 1][0] - k[i][0]);
+  const v = j => k[((j % n) + n) % n][1];
+  return cr(v(i - 1), v(i), v(i + 1), v(i + 2), u);
+}
+function keyPts(k, s) {                        // same, for [time, [x, y]] keys
+  return [0, 1].map(d => keyCR(k.map(([j, p]) => [j, p[d]]), s));
+}
+function toLocal(xw, yw, L, Pd) {              // ground coords → panther body coords (lift L, pitch Pd°)
+  const a = -Pd * DEG, x = xw, y = yw - L + 120;
+  return [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a) - 120];
+}
+function toWorld(x, y, L, Pd) {
+  const a = Pd * DEG, Y = y + 120;
+  return [x * Math.cos(a) - Y * Math.sin(a), x * Math.sin(a) + Y * Math.cos(a) - 120 + L];
+}
+
+// ---- the story: one run of the animation, then it fades and starts over ----------
+// walk → speed up → gallop → leap a log → gallop → leap a bigger log → gallop → slow down → stop → lie down → rest
+const STORY = 26, FIN = 1.2, FOUT = 2.0, SEND = +(params.get('end') || STORY);   // ?end=N cuts the story short with a fade at N s
+const RUN_V = 540;                    // gallop speed, body units / s
+const SG = 330;                       // gallop stride: distance covered per gallop cycle
+const EVT = { acc0: 1e9, acc1: 1e9, slow0: 1e9, slow1: 1e9, lie0: 1e9, lie1: 1e9 };
+const JUMPS = [];
+let SD = 0, STL = 0;                  // scenery distance and story time for the frame being drawn
+
+function speedAt(t) {
+  if (t < EVT.acc0) return 3 * V * 2.2;   // a flat-out run: three times the earlier pace
+  if (t < EVT.acc1) return lerp(V, RUN_V, smooth((t - EVT.acc0) / (EVT.acc1 - EVT.acc0)));
+  if (t < EVT.slow0) return RUN_V;
+  if (t < EVT.slow1) return RUN_V * Math.pow(1 - (t - EVT.slow0) / (EVT.slow1 - EVT.slow0), 1.5);
+  return 0;
+}
+const TAB_DT = 1 / 120, TAB_N = Math.ceil(STORY / TAB_DT) + 2;
+const TAB = { d: new Float64Array(TAB_N), w: new Float64Array(TAB_N), g: new Float64Array(TAB_N), v: new Float64Array(TAB_N) };
+(function buildTable() {              // distance, walk cycles and gallop cycles, integrated once
+  let d = 0, w = 0, g = 0;
+  for (let i = 0; i < TAB_N; i++) {
+    const v = speedAt(i * TAB_DT);
+    TAB.d[i] = d; TAB.w[i] = w; TAB.g[i] = g; TAB.v[i] = v;
+    d += v * TAB_DT; w += v * DUTY / STRIDE * TAB_DT; g += v / SG * TAB_DT;
+  }
+})();
+function tab(a, t) { const x = clamp(t / TAB_DT, 0, TAB_N - 2), i = Math.floor(x); return lerp(a[i], a[i + 1], x - i); }
+JUMPS.forEach(j => { j.logD = tab(TAB.d, j.t + 0.5 * j.D) + 20; });     // each log lies where its leap passes over it
+
+function weights(t) {
+  const v = tab(TAB.v, t);
+  const wG = smooth(clamp((v - 230) / 110));
+  const sStand = smooth(clamp((90 - v) / 60));
+  return { v, wG, wStand: sStand * (1 - wG), wWalk: (1 - wG) * (1 - sStand) };
+}
+
+// ---- gallop ----------------------------------------------------------------------
+const G_STANCE = { LH: [0.00, 0.24], RH: [0.06, 0.24], RF: [0.38, 0.22], LF: [0.45, 0.22] };   // [touchdown, duty] per cycle
+const G_XC = { hind: -69, fore: 112 };
+const G_SWING = {          // [progress, x, height] — paws stretch back, tuck under, reach forward
+  hind: [[0, -109, 0], [0.2, -145, 26], [0.5, -77, 40], [0.8, -17, 24], [1, -29, 0]],
+  fore: [[0, 76, 0], [0.3, 60, 38], [0.55, 90, 44], [0.85, 170, 30], [1, 148, 0]],
+};
+const G_LIFT  = [[0, -3], [0.15, -9], [0.3, -24], [0.4, -14], [0.55, -4], [0.68, -8], [0.8, -22], [0.92, -12], [1, -3]];
+const G_PITCH = [[0, 2], [0.15, -4], [0.3, -6], [0.42, 5], [0.55, 6], [0.7, -2], [0.82, -3], [0.95, 3], [1, 2]];
+const G_FLEX  = [[0, 0], [0.3, -1], [0.55, 0], [0.8, 1], [1, 0]];          // + = back arched (paws gathered), − = stretched out
+const G_X = { hind: G_SWING.hind.map(r => [r[0], r[1]]), fore: G_SWING.fore.map(r => [r[0], r[1]]) };
+const G_H = { hind: G_SWING.hind.map(r => [r[0], r[2]]), fore: G_SWING.fore.map(r => [r[0], r[2]]) };
+function gallopFoot(L, g) {
+  const [s0, duty] = G_STANCE[L.id], p = frac(g - s0), kind = L.hind ? 'hind' : 'fore';
+  const xc = G_XC[kind], disp = SG * duty;
+  if (p < duty) {
+    const s = p / duty;
+    return { x: xc + disp * (0.5 - s), h: 0, ang: L.hind ? 68 + 48 * s * s : 70 + 46 * s * s };
+  }
+  const s = (p - duty) / (1 - duty);
+  return { x: keyCR(G_X[kind], s), h: keyCR(G_H[kind], s), ang: keyframes(L.hind ? HIND_SWING : FRONT_SWING, s) };
+}
+
+// ---- the leap ------------------------------------------------------------------
+// J runs 0 → 1 over the jump. The body gets a lift (+y = down) and a pitch (deg, + = nose down)
+// about a pivot in the middle of the torso; paws are planned in ground coordinates.
+const LIFT_K  = [[0, 0], [0.2, 10], [0.32, 3], [0.48, -52], [0.6, -32], [0.68, -9], [0.78, 9], [0.9, 2], [1, 0]];
+const PITCH_K = [[0, 0], [0.2, -3], [0.34, -16], [0.48, -2], [0.6, 11], [0.68, 12], [0.8, 1], [0.9, -2], [1, 0]];
+const BLEND_K = [[0, 0], [0.12, 1], [0.86, 1], [1, 0]];
+const FLIGHT_K = [[0, 0], [0.3, 0], [0.45, 1], [0.66, 1], [0.84, 0], [1, 0]];
+const jumpLift = J => keyCR(LIFT_K, J), jumpPitch = J => keyCR(PITCH_K, J);
+function jumpFoot(L, J, sp, amp) {
+  const dx = L.far ? (L.hind ? 8 : 10) : 0;
+  const loc = (xw, j) => toLocal(xw, -7.5, jumpLift(j) * amp, jumpPitch(j) * amp);
+  if (L.hind) {
+    const TO = 0.34, LD = 0.78;
+    const A = j => -67 + dx - sp * j, B = j => 31 + dx - sp * (j - LD);
+    const ang = keyCR([[0, 68], [0.22, 76], [0.34, 128], [0.46, 142], [0.64, 96], [0.78, 66], [0.9, 72], [1, 68]], J);
+    const p = J <= TO ? loc(A(J), J) : J >= LD ? loc(B(J), J)
+      : keyPts([[TO, loc(A(TO), TO)], [0.47, [-155 + dx, -56]], [0.64, [-65 + dx, -50]], [LD, loc(B(LD), LD)]], J);
+    return { x: p[0], y: p[1], ang };
+  }
+  const LO = 0.22, LDf = 0.66;
+  const A = j => 62 + dx - sp * j, B = j => 152 + dx - sp * (j - LDf);
+  const ang = keyCR([[0, 70], [0.22, 112], [0.36, 168], [0.54, 52], [0.66, 70], [0.8, 106], [1, 80]], J);
+  const p = J <= LO ? loc(A(J), J) : J >= LDf ? loc(B(J), J)
+    : keyPts([[LO, loc(A(LO), LO)], [0.36, [128 + dx, -82]], [0.54, [188 + dx, -40]], [LDf, loc(B(LDf), LDf)]], J);
+  return { x: p[0], y: p[1], ang };
+}
+
+// ---- resting poses -------------------------------------------------------------
+const STAND_DX = { LH: 6, RH: -6, LF: -12, RF: 2 };   // standing square: hind paws under the hips, fore paws under the shoulders
+const L_LIE = 66, P_LIE = -3;          // body lowered onto the ground, chest a touch high (sphinx pose)
+const LIE_FEET = (() => {
+  const spec = { LH: [-34, 4], RH: [-50, 4], LF: [168, 8], RF: [152, 8] }, o = {};
+  for (const id in spec) { const p = toLocal(spec[id][0], -7.5, L_LIE, P_LIE); o[id] = { x: p[0], y: p[1], ang: spec[id][1] - P_LIE }; }
+  return o;
+})();
+
+// ---- sound events, found by scanning the gait table once -------------------------
+const EVENTS = (() => {
+  const ev = [], inAir = t => JUMPS.some(j => t > j.t + 0.12 * j.D && t < j.t + 0.9 * j.D);
+  for (let i = 1; i < TAB_N; i++) {
+    const t = i * TAB_DT, w = weights(t);
+    if (inAir(t)) continue;
+    for (const L of LEGS) {
+      if (w.wWalk > 0.5 && Math.floor(TAB.w[i] + L.off) > Math.floor(TAB.w[i - 1] + L.off)) ev.push({ t, k: 'walk', near: !L.far });
+      if (w.wG > 0.5 && Math.floor(TAB.g[i] - G_STANCE[L.id][0]) > Math.floor(TAB.g[i - 1] - G_STANCE[L.id][0])) ev.push({ t, k: 'gallop', near: !L.far, px: L.hind ? -29 : 148 });
+    }
+    if (w.wG > 0.5 && Math.floor(TAB.g[i]) > Math.floor(TAB.g[i - 1])) ev.push({ t: t + 0.1, k: 'pant' });
+  }
+  for (const j of JUMPS) {
+    ev.push({ t: j.t + 0.3 * j.D, k: 'push' }, { t: j.t + 0.4 * j.D, k: 'whoosh' },
+            { t: j.t + 0.66 * j.D, k: 'land', v: 0.4, px: 150 }, { t: j.t + 0.78 * j.D, k: 'land', v: 0.5, px: 31 });
+  }
+  ev.push({ t: EVT.slow1 + 0.1, k: 'huff' }, { t: EVT.lie0 + 1.1, k: 'land', v: 0.18 }, { t: EVT.lie0 + 2.3, k: 'land', v: 0.28 }, { t: EVT.lie0 + 2.5, k: 'sigh' });
+  for (let t = EVT.lie1 + 1.5; t < STORY - 2.5; t += 3.6) ev.push({ t, k: 'breath' });
+  return ev;
+})();
+
+// Build the whole skeleton for story time tl (body units; ground at y = 0, +y is down)
+function poseSide(tl) {
+  const W = weights(tl);
+  const c = tab(TAB.w, tl), gph = tab(TAB.g, tl), gf = frac(gph), wG = W.wG;
+  const U = clamp((tl - EVT.lie0) / (EVT.lie1 - EVT.lie0)), wL = smooth(U);
+
+  let jmp = null;
+  for (const j of JUMPS) { const J = (tl - j.t) / j.D; if (J > 0 && J < 1) jmp = { ...j, J }; }
+  const J = jmp ? jmp.J : 0, amp = jmp ? jmp.amp : 1;
+  const wJ = jmp ? keyframes(BLEND_K, J) : 0, fl = jmp ? keyframes(FLIGHT_K, J) : 0;
+
+  // body-level pose: lift, pitch and spine flex blend between walk, gallop, rest and leap
+  const gLift = keyP(G_LIFT, gf), gPitch = keyP(G_PITCH, gf), flex = wG * keyP(G_FLEX, gf);
+  let lift = lerp(wG * gLift, L_LIE, wL), pitch = lerp(wG * gPitch, P_LIE, wL);
+  if (jmp) { lift = lerp(lift, jumpLift(J) * amp, wJ); pitch = lerp(pitch, jumpPitch(J) * amp, wJ); }
+
+  const bobAmt = W.wWalk * (1 - wL);
+  const fBob = -2.6 * Math.cos(TAU * 2 * (c - (DUTY / 2 - 0.25))) * bobAmt;
+  const hBob = -2.2 * Math.cos(TAU * 2 * (c - DUTY / 2)) * bobAmt;
+  const arch = x => -9 * flex * Math.max(0, 1 - ((x + 10) / 140) ** 2);
+  const off = x => lerp(hBob, fBob, clamp((x + 110) / 220)) + arch(x);
+
+  const feet = {}, legs = {};
+  for (const L of LEGS) feet[L.id] = footState(L, c);
+  const bump = f => f.stance ? Math.sin(Math.PI * f.s) : 0;
+  const walkAmt = bobAmt * (1 - wJ);
+  const bF = (6.5 * bump(feet.LF) + 2.5 * bump(feet.RF)) * walkAmt;    // shoulder blade rolls up over the planted fore leg
+  const bH = (4.0 * bump(feet.LH) + 1.5 * bump(feet.RH)) * walkAmt;    // hip rocks up over the planted hind leg
+  const bAmp = 1 + 1.3 * wL;
+  const breath = (Math.sin(TAU * 0.3 * tl) * (1 - wG) + Math.sin(TAU * gph) * wG) * bAmp;
+  const stretch = 1 + 0.05 * fl - 0.05 * flex;       // the spine lengthens when the cat stretches out
+
+  for (const L of LEGS) {
+    const fw = feet[L.id], gp = gallopFoot(L, gph);
+    const gF = toLocal(gp.x, -gp.h - 7.5, gLift, gPitch);
+    const sx = L.x0 + STAND_DX[L.id];
+    let Fx = fw.fx * W.wWalk + gF[0] * wG + sx * W.wStand;
+    let Fy = (fw.fy - 7.5) * W.wWalk + gF[1] * wG - 7.5 * W.wStand;
+    let ang = fw.ang * W.wWalk + (gp.ang - gPitch) * wG + (L.hind ? 72 : 70) * W.wStand;
+    const wl = L.hind ? smooth(clamp((U - 0.25) / 0.75)) : smooth(clamp(U / 0.8));
+    const lf = LIE_FEET[L.id];
+    Fx = lerp(Fx, lf.x, wl); Fy = lerp(Fy, lf.y, wl); ang = lerp(ang, lf.ang, wl);
+    if (jmp) { const jf = jumpFoot(L, J, jmp.sp, amp); Fx = lerp(Fx, jf.x, wJ); Fy = lerp(Fy, jf.y, wJ); ang = lerp(ang, jf.ang, wJ); }
+
+    const F = [Fx, Fy], ext = clamp(Fx - L.x0, -75, 75), Fw = toWorld(Fx, Fy + 7.5, lift, pitch);
+    if (L.hind) {
+      const d = dir(ang), Hk = [F[0] - d[0] * METATARSUS, F[1] - d[1] * METATARSUS];
+      const hx = HIP[0] + 0.08 * ext;                                      // pelvis rocks a little toward the paw
+      const HJ = [hx * stretch, HIP[1] + off(hx) - 0.5 * bH];
+      const K = ik(HJ[0], HJ[1], Hk[0], Hk[1], THIGH, SHIN, -1);
+      const td = dir(ang - 66);
+      legs[L.id] = { hind: true, HJ, K, Hk, F, Fw, toe: [F[0] + td[0] * 9, F[1] + td[1] * 9] };
+    } else {
+      const d = dir(ang), Wr = [F[0] - d[0] * 20, F[1] - d[1] * 20];
+      const cx = 86 - 0.05 * ext, jx = 100 + 0.12 * ext;
+      const SC = [cx * stretch, -150 + off(cx) - bF * (L.far ? 0.3 : 1)];  // top of the shoulder blade
+      const SJ = [jx * stretch, -110 + off(jx)];                          // shoulder joint
+      const E = ik(SJ[0], SJ[1], Wr[0], Wr[1], 48, 47, 1);
+      const td = dir(ang - 72);
+      legs[L.id] = { hind: false, SC, SJ, E, Wr, F, Fw, toe: [F[0] + td[0] * 9, F[1] + td[1] * 9] };
+    }
+  }
+
+  const P = (x, y) => [x * stretch, y + off(x)];
+  // The rump stops just behind the seat bone; below the hip the haunch is drawn by the thigh itself
+  // (drawLeg), so it swings with the leg instead of hanging behind it.
+  const hull = [
+    P(-124, -141), P(-114, -157 - bH), P(-86, -163 - bH * 0.6), P(-42, -154), P(0, -151), P(42, -157),
+    P(82, -168 - bF), P(110, -165), P(132, -158), P(148, -144),
+    P(152, -118), P(140, -98), P(120, -80 - breath * 0.8), P(88, -70 - breath * 1.3),
+    P(50, -74 - breath * 1.3), P(14, lerp(-86, -74, wL) - breath * 0.6), P(-20, lerp(-97, -76, wL)),
+    P(-54, lerp(-104, -78, wL)), P(-86, lerp(-114, -84, wL)), P(-115, lerp(-128, -98, wL)),
+  ];
+  const head = {
+    ear: (-16 * wG + (frac(tl / 5.9) > 0.94 ? Math.sin((frac(tl / 5.9) - 0.94) / 0.06 * TAU) * 9 : 0) * wL + 2 * Math.sin(TAU * 0.7 * tl) * (1 - wG)) * DEG,
+    x: 136 * stretch,
+    // head carried low, about level with the shoulder blades, so the weight reads as hanging off the shoulders
+    y: -144 + 7 * (1 - wL) + off(136) + 1.4 * Math.cos(TAU * 2 * (c - DUTY / 2 + 0.1)) * bobAmt - 24 * wL,
+    a: (7 + 2.5 * bobAmt + 1.6 * Math.sin(TAU * 2 * c) * walkAmt - pitch * 0.55 + wL * (2.5 * Math.sin(TAU * 0.11 * tl) - 3)) * DEG,
+  };
+  // tail: hangs low with the tip curling up when walking, streams out behind when running, lies along the ground at rest
+  const tail = [];
+  let tx = -120, ty = -146 + off(-120), N = 17;
+  tail.push([tx, ty]);
+  for (let i = 1; i <= N; i++) {
+    const u = i / N;
+    const aW = (u < 0.45 ? lerp(158, 112, u / 0.45) : lerp(112, 220, Math.pow((u - 0.45) / 0.55, 1.4)))
+             + Math.sin(TAU * (c / 2) - u * 2.6) * (3 + 13 * u) + Math.sin(TAU * c - u * 2) * 3 * u;
+    const aR = lerp(172, 196, u) + Math.sin(TAU * gph - u * 3) * (6 + 10 * u);
+    const aL = lerp(104, 176, smooth(clamp(u * 1.5))) + Math.sin(TAU * 0.35 * tl - u * 3) * (2 + 9 * u);
+    let a = lerp(lerp(aW, aR, wG), aL, wL);
+    a += fl * 30 * (1 - 0.5 * u) - pitch * 0.6;
+    const dd = dir(a); tx += dd[0] * 11; ty = Math.min(ty + dd[1] * 11, -3 - lift);
+    tail.push([tx, ty]);
+  }
+  const drowsy = smooth(clamp((tl - EVT.lie1) / 9));
+  const eye = (frac(tl / 4.7) > 0.968 ? 0.12 : 1) * (1 - 0.6 * drowsy);
+  return { legs, hull, head, tail, off, bF, bH, feet, lift, pitch, eye, wG, wL };
+}
+
+// ---- panther drawing (into any context whose transform maps body units → screen) ----
+const hh = (a, b) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
+
+function rn(ax, ay, bx, by) {                    // unit normal of a segment, pointing toward the rear (−x)
+  const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1;
+  let nx = dy / L, ny = -dx / L;
+  if (nx > 0) { nx = -nx; ny = -ny; }
+  return [nx, ny];
+}
+function blob(c, ax, ay, bx, by, t, rx, ry, shift) {   // a muscle: ellipse laid along a bone
+  const n = rn(ax, ay, bx, by), dx = bx - ax, dy = by - ay;
+  c.beginPath(); c.ellipse(ax + dx * t + n[0] * shift, ay + dy * t + n[1] * shift, rx, ry, Math.atan2(dy, dx), 0, TAU); c.fill();
+}
+function dot(c, x, y, r) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); }
+
+// points along a closed/open Catmull-Rom spline with outward normals (for fur on the edge)
+function sampleSpline(pts, closed, per) {
+  const n = pts.length, out = [], segs = closed ? n : n - 1;
+  const Pp = i => pts[closed ? (i + n) % n : clamp(i, 0, n - 1)];
+  for (let i = 0; i < segs; i++) {
+    const p0 = Pp(i - 1), p1 = Pp(i), p2 = Pp(i + 1), p3 = Pp(i + 2);
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    for (let k = 0; k < per; k++) {
+      const u = k / per, v = 1 - u;
+      const x = v * v * v * p1[0] + 3 * v * v * u * c1x + 3 * v * u * u * c2x + u * u * u * p2[0];
+      const y = v * v * v * p1[1] + 3 * v * v * u * c1y + 3 * v * u * u * c2y + u * u * u * p2[1];
+      const dx = 3 * v * v * (c1x - p1[0]) + 6 * v * u * (c2x - c1x) + 3 * u * u * (p2[0] - c2x);
+      const dy = 3 * v * v * (c1y - p1[1]) + 6 * v * u * (c2y - c1y) + 3 * u * u * (p2[1] - c2y);
+      const L = Math.hypot(dx, dy) || 1;
+      out.push({ x, y, nx: dy / L, ny: -dx / L });
+    }
+  }
+  return out;
+}
+function furEdge(c, pts, closed, per, seed, len) {   // short hairs along an outline, leaning toward the tail
+  const s = sampleSpline(pts, closed, per);
+  for (let i = 0; i < s.length; i++) {
+    const p = s[i];
+    if (hh(i, seed) < 0.12) continue;
+    const L = len * (0.45 + hh(seed, i + 31));
+    let dx = p.nx * 0.7 - 0.7, dy = p.ny * 0.7 + 0.2; const m = Math.hypot(dx, dy); dx /= m; dy /= m;
+    const tx = -p.ny * 0.6, ty = p.nx * 0.6;
+    c.beginPath(); c.moveTo(p.x - tx, p.y - ty); c.lineTo(p.x + tx, p.y + ty); c.lineTo(p.x + dx * L, p.y + dy * L); c.fill();
+  }
+}
+function furSeg(c, ax, ay, ar, bx, by, br, seed) {   // the same, along both sides of a limb segment
+  const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, tx = dx / L, ty = dy / L, nx = ty, ny = -tx;
+  const n = Math.max(2, Math.round(L / 4));
+  for (let i = 0; i <= n; i++) for (const sd of [-1, 1]) {
+    if (hh(i + seed, sd * 7.7) < 0.2) continue;
+    const u = i / n, r = lerp(ar, br, u), len = 1.2 + 2.4 * hh(sd + seed, i * 3.1);
+    const x0 = ax + dx * u + nx * sd * r * 0.95, y0 = ay + dy * u + ny * sd * r * 0.95;
+    let sx = nx * sd * 0.8 + tx * 0.5, sy = ny * sd * 0.8 + ty * 0.5; const m = Math.hypot(sx, sy); sx /= m; sy /= m;
+    c.beginPath(); c.moveTo(x0 - tx * 0.6, y0 - ty * 0.6); c.lineTo(x0 + tx * 0.6, y0 + ty * 0.6); c.lineTo(x0 + sx * len, y0 + sy * len); c.fill();
+  }
+}
+
+// ---- head (local coords: origin at the back of the skull, facing right) ----
+const HS = 1.16;   // head scale
+const HEAD_PTS = [[-4, -6], [1, -20], [12, -31], [28, -36], [44, -33], [56, -26], [66, -17], [74, -11], [80, -8], [83, -3],
+                  [81, 3], [77, 7], [74, 11], [69, 16], [62, 20], [50, 25], [36, 29], [22, 31], [8, 28], [-2, 19]];
+function earPath(c, ear, dx, dy, k) {
+  c.save(); c.translate(19 + dx, -30 + dy); c.rotate(ear); c.translate(-19, 30); c.scale(k, k);
+  c.beginPath(); c.moveTo(6, -24); c.quadraticCurveTo(6, -44, 17, -48); c.quadraticCurveTo(29, -46, 33, -30); c.closePath(); c.fill();
+  c.restore();
+}
+function drawHead(c, H) {
+  if (H.polys) { for (const pg of H.polys) fillPoly(c, pg); return; }
+  c.save(); c.translate(H.x, H.y); c.rotate(H.a); c.scale(HS, HS);
+  earPath(c, (H.ear || 0) * 0.8, 9, -3, 0.92);                 // far ear, partly hidden
+  c.beginPath(); splinePath(c, HEAD_PTS); c.fill();
+  earPath(c, H.ear || 0, 0, 0, 1);                             // near ear
+  furEdge(c, HEAD_PTS, true, 4, 9, 1.8);
+  c.restore();
+}
+
+// ---- limbs: bones plus muscle, so the outline swells and tapers like a real cat ----
+function drawPaw(c, F, toe) {
+  const d = Math.hypot(toe[0] - F[0], toe[1] - F[1]) || 1, ux = (toe[0] - F[0]) / d, uy = (toe[1] - F[1]) / d;
+  capsule(c, F[0], F[1], 9, toe[0], toe[1], 7.6);
+  dot(c, toe[0] + ux * 3, toe[1] + uy * 3, 4.4);
+}
+// The haunch: a muscle mass hung between the pelvis (fixed to the body) and the knee (moves with the leg).
+// Swing the leg forward and it tucks up under the croup; push it back and the hamstrings follow it.
+function thighOutline(L, far) {
+  if (L.th) return L.th;
+  const k = far ? 0.82 : 1, H = [L.HJ[0], L.HJ[1] + (far ? 8 : 0)], K = L.K;
+  const dx = K[0] - H[0], dy = K[1] - H[1], d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+  const fx = uy, fy = -ux;                                      // normal toward the front of the thigh
+  const at = (p, a, b) => [p[0] + ux * a + fx * b, p[1] + uy * a + fy * b];
+  const seat = [H[0] - 29 * k, H[1] + 5 * k];                  // seat bone: back corner of the haunch
+  const kneePit = at(K, -3, -16 * k);
+  const ham = 0.45, bulge = far ? 5 : 11;                                             // where along the back of the thigh the hamstrings bulge most
+  return [
+    [H[0] - 21 * k, H[1] - 25 * k],                             // top of the haunch, under the croup
+    at(H, 20, 25 * k),                                          // quadriceps
+    at(K, -6, 13 * k),                                          // front of the stifle
+    at(K, 8, 1),                                                // knee cap
+    kneePit,
+    [lerp(seat[0], kneePit[0], ham) - fx * bulge, lerp(seat[1], kneePit[1], ham) - fy * bulge],     // hamstrings
+    seat,
+  ];
+}
+function drawLeg(c, L, far = false) {
+  if (L.hind) {
+    const th = thighOutline(L, far);
+    c.beginPath(); splinePath(c, th); c.fill();
+    if (L.thr) capsule(c, L.HJ[0], L.HJ[1], L.thr, L.K[0], L.K[1], L.thr * 0.75);
+    capsule(c, L.K[0], L.K[1], 15 * LEGK, L.Hk[0], L.Hk[1], 8.4);
+    blob(c, L.K[0], L.K[1], L.Hk[0], L.Hk[1], 0.32, 24, 11.5, 6);                    // calf
+    capsule(c, L.Hk[0], L.Hk[1], 8.4, L.F[0], L.F[1], 6.8);
+    const n = rn(L.K[0], L.K[1], L.Hk[0], L.Hk[1]); dot(c, L.Hk[0] + n[0] * 3, L.Hk[1] + n[1] * 3, 7.6);   // hock
+    drawPaw(c, L.F, L.toe);
+    furEdge(c, th, true, 5, far ? 17 : 11, 2.2);
+    furSeg(c, L.K[0], L.K[1], 15, L.Hk[0], L.Hk[1], 8.4, 12);
+    furSeg(c, L.Hk[0], L.Hk[1], 8.4, L.F[0], L.F[1], 6.8, 13);
+  } else {
+    if (!far || RU > 0.45) { capsule(c, L.SC[0], L.SC[1], 22 * LEGK, L.SJ[0], L.SJ[1], 24 * LEGK); blob(c, L.SC[0], L.SC[1], L.SJ[0], L.SJ[1], 0.5, 30, 22 * LEGK, 2); }   // shoulder blade
+    capsule(c, L.SJ[0], L.SJ[1], 22 * LEGK, L.E[0], L.E[1], 14.5 * LEGK);
+    const n1 = rn(L.SJ[0], L.SJ[1], L.E[0], L.E[1]); dot(c, L.E[0] + n1[0] * 3, L.E[1] + n1[1] * 3, 13);       // elbow
+    capsule(c, L.E[0], L.E[1], 14, L.Wr[0], L.Wr[1], 9.4);
+    blob(c, L.E[0], L.E[1], L.Wr[0], L.Wr[1], 0.28, 25, 12, 2);                                                 // forearm
+    capsule(c, L.Wr[0], L.Wr[1], 9.4, L.F[0], L.F[1], 8.6);
+    const n2 = rn(L.E[0], L.E[1], L.Wr[0], L.Wr[1]); dot(c, L.Wr[0] + n2[0] * 3, L.Wr[1] + n2[1] * 3, 8.4);    // wrist
+    drawPaw(c, L.F, L.toe);
+    furSeg(c, L.SJ[0], L.SJ[1], 22, L.E[0], L.E[1], 14.5, 21);
+    furSeg(c, L.E[0], L.E[1], 14, L.Wr[0], L.Wr[1], 9.4, 22);
+    furSeg(c, L.Wr[0], L.Wr[1], 9.4, L.F[0], L.F[1], 8.6, 23);
+  }
+}
+function drawTail(c, tail) {
+  const n = tail.length - 1;
+  for (let i = 0; i < n; i++) {
+    const r0 = lerp(10.5, 6.6, Math.pow(i / n, 0.8)), r1 = lerp(10.5, 6.6, Math.pow((i + 1) / n, 0.8));
+    capsule(c, tail[i][0], tail[i][1], r0, tail[i + 1][0], tail[i + 1][1], r1);
+    furSeg(c, tail[i][0], tail[i][1], r0, tail[i + 1][0], tail[i + 1][1], r1, 40 + i);
+  }
+}
+function drawBody(c, P) {
+  drawTail(c, P.tail);
+  if (P.tube) {
+    for (const pg of P.tube) fillPoly(c, pg);
+    c.beginPath(); c.arc(P.neck[0], P.neck[1], 33, 0, TAU); c.fill();                         // neck
+  } else {
+    c.beginPath(); splinePath(c, P.hull); c.fill();
+    c.beginPath(); c.ellipse(P.head.x - 16, P.head.y + 12, 34, 32, 0.3, 0, TAU); c.fill();   // neck
+    furEdge(c, P.hull, true, 6, 3, 2.6);
+  }
+  drawLeg(c, P.legs.LH);
+  drawLeg(c, P.legs.LF);
+  drawHead(c, P.head);
+}
+
+// Faint "ghost rosettes" — black panthers are spotted leopards; in moonlight the pattern just shows.
+const ROSETTES = (() => {
+  const r = rng(7), out = [];
+  for (let x = -122; x < 128; x += 19) for (let y = -156; y < -88; y += 17) {
+    const jx = x + (r() - 0.5) * 12, jy = y + (r() - 0.5) * 10;
+    out.push({ x: jx, y: jy, r: 3.5 + r() * 2.8, rot: r() * TAU, gaps: 3 + Math.floor(r() * 3) });
+  }
+  return out;
+})();
+
+// ---- scene layout ------------------------------------------------------------
+let W, H, S, sc, ox, oy, DPR;
+let mBody, cBody, mRim, cRim, mFar, cFar;
+let layers = {};
+function makeCanvas() { const c = document.createElement('canvas'); c.width = W; c.height = H; return [c, c.getContext('2d')]; }
+
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  W = canvas.width = Math.round(innerWidth * DPR);
+  H = canvas.height = Math.round(innerHeight * DPR);
+  S = Math.min(W, H);
+  const portrait = H > W;
+  sc = Math.min(W * 0.86 / 560, H * (portrait ? 0.4 : 0.44) / 260);
+  ox = W / 2 + 40 * sc;
+  oy = H * (portrait ? 0.68 : 0.8);
+  [mBody, cBody] = makeCanvas(); [mRim, cRim] = makeCanvas(); [mFar, cFar] = makeCanvas();
+  buildLayers();
+}
+
+function buildLayers() {
+  const r = rng(42);
+  const span = f => V * sc * f * LOOP;     // each layer repeats exactly once per loop
+  // far forest: slender trunks + canopy clumps, hazy blue
+  const far = { f: 0.22, L: span(0.22), items: [] };
+  for (let x = 0; x < far.L; x += (40 + r() * 70) * sc) far.items.push({ x, w: (4 + r() * 10) * sc, lean: (r() - 0.5) * 0.06, top: r() * 0.25, clumps: Array.from({ length: 3 + Math.floor(r() * 4) }, () => [(r() - 0.5) * 120 * sc, r() * 0.35 * H, (25 + r() * 55) * sc]) });
+  // mid jungle: big trunks with roots, hanging vines, fern clusters
+  const mid = { f: 0.55, L: span(0.55), items: [] };
+  for (let x = 0; x < mid.L; x += (180 + r() * 260) * sc) mid.items.push({ x, kind: r() < 0.55 ? 'trunk' : 'fern', w: (26 + r() * 40) * sc, s: 0.8 + r() * 0.7, seed: Math.floor(r() * 1e6), vines: Math.floor(r() * 3) });
+  // ground: grass tufts and leaf litter, moves exactly with the paws
+  const gr = { f: 1, L: span(1), items: [] };
+  for (let x = 0; x < gr.L; x += (14 + r() * 40) * sc) gr.items.push({ x, h: (6 + r() * 18) * sc, n: 3 + Math.floor(r() * 5), front: r() < 0.22, seed: Math.floor(r() * 1e6) });
+  // foreground: big dark leaves that drift past in front, near the bottom
+  const fg = { f: 1.7, L: span(1.7), items: [] };
+  for (let x = 0; x < fg.L; x += (700 + r() * 900) * sc) fg.items.push({ x, s: 1 + r() * 0.8, seed: Math.floor(r() * 1e6) });
+  // fireflies
+  const ff = { f: 0.4, L: span(0.4), items: [] };
+  for (let i = 0; i < 22; i++) ff.items.push({ x: r() * ff.L, y: oy - (15 + r() * 230) * sc, ph: r() * TAU, k: 2 + Math.floor(r() * 4), dr: (10 + r() * 25) * sc });
+  // stars
+  const stars = Array.from({ length: 90 }, () => ({ x: r() * W, y: r() * oy * 0.55, a: 0.2 + r() * 0.6, k: 1 + Math.floor(r() * 6), ph: r() * TAU, s: (0.6 + r() * 1.2) * DPR }));
+  layers = { far, mid, gr, fg, ff, stars };
+}
+
+function eachWrapped(layer, t, margin, fn) {
+  const offset = (SD * sc * layer.f) % layer.L;
+  for (const it of layer.items) for (let k = -1; k <= 1; k++) {
+    const x = it.x - offset + k * layer.L;
+    if (x > -margin && x < W + margin) fn(it, x);
+  }
+}
+
+// ---- background --------------------------------------------------------------
+const MOON = () => [W * 0.24, H * (H > W ? 0.14 : 0.2), S * 0.055];
+
+function drawSky(t) {
+  const g = ctx.createLinearGradient(0, 0, 0, oy);
+  g.addColorStop(0, '#3f8fd8'); g.addColorStop(0.6, '#9fd0f2'); g.addColorStop(1, '#e9f5fb');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const sx = W * 0.76, sy = H * 0.14, sr = S * 0.06;
+  const halo = ctx.createRadialGradient(sx, sy, sr * 0.8, sx, sy, sr * 6);
+  halo.addColorStop(0, 'rgba(255,250,220,0.6)'); halo.addColorStop(1, 'rgba(255,250,220,0)');
+  ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff8e0'; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  for (const [cx, cy, r] of [[0.1, 0.1, 0.05], [0.45, 0.07, 0.06], [0.62, 0.2, 0.04]]) {
+    const x = (((W * cx + t * 9) % (W * 1.3)) + W * 1.3) % (W * 1.3) - W * 0.15, y = H * cy, rr = S * r;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.arc(x + rr * 1.3, y - rr * 0.35, rr * 0.8, 0, TAU); ctx.arc(x + rr * 2.3, y, rr * 0.9, 0, TAU); ctx.fill();
+  }
+}
+function drawFar(t) {
+  eachWrapped(layers.far, t, 200 * sc, (it, x) => {
+    ctx.fillStyle = '#7fb3a0';
+    const base = oy - 18 * sc, top = H * it.top - 20;
+    ctx.beginPath();
+    ctx.moveTo(x - it.w / 2, base); ctx.lineTo(x - it.w * 0.35 + it.lean * (base - top), top);
+    ctx.lineTo(x + it.w * 0.35 + it.lean * (base - top), top); ctx.lineTo(x + it.w / 2, base); ctx.fill();
+    ctx.fillStyle = '#5f9c86';
+    for (const [dx, y, rr] of it.clumps) { ctx.beginPath(); ctx.ellipse(x + dx, y, rr * 1.4, rr, 0, 0, TAU); ctx.fill(); }
+  });
+  const g = ctx.createLinearGradient(0, oy - 260 * sc, 0, oy);
+  g.addColorStop(0, 'rgba(220,240,230,0)'); g.addColorStop(1, 'rgba(220,240,230,0.5)');
+  ctx.fillStyle = g; ctx.fillRect(0, oy - 260 * sc, W, 260 * sc);
+}
+function leafShape(c, x, y, len, ang, wid) {
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const tx = x + ca * len, ty = y + sa * len, nx = -sa * wid, ny = ca * wid;
+  c.beginPath(); c.moveTo(x, y);
+  c.quadraticCurveTo(x + ca * len * 0.5 + nx, y + sa * len * 0.5 + ny, tx, ty);
+  c.quadraticCurveTo(x + ca * len * 0.5 - nx, y + sa * len * 0.5 - ny, x, y);
+  c.fill();
+}
+function fern(c, x, y, s, seed, color) {
+  const r = rng(seed); c.fillStyle = color;
+  const fronds = 6 + Math.floor(r() * 5);
+  for (let i = 0; i < fronds; i++) {
+    const a0 = lerp(-160, -20, i / (fronds - 1)) * DEG + (r() - 0.5) * 0.25;
+    const len = (60 + r() * 70) * s * sc; let px = x, py = y, a = a0;
+    const segs = 9;
+    for (let k = 0; k < segs; k++) {
+      const step = len / segs; const nx = px + Math.cos(a) * step, ny = py + Math.sin(a) * step;
+      const lw = (1 - k / segs) * 16 * s * sc + 3 * sc;
+      leafShape(c, nx, ny, lw, a - 1.1, lw * 0.22); leafShape(c, nx, ny, lw, a + 1.1, lw * 0.22);
+      px = nx; py = ny; a += (a0 < -90 * DEG ? -1 : 1) * 0.12 + 0.02;   // fronds arch over and droop
+    }
+  }
+}
+function drawMid(t) {
+  eachWrapped(layers.mid, t, 400 * sc, (it, x) => {
+    const base = oy - 6 * sc;
+    if (it.kind === 'trunk') {
+      const w = it.w;
+      ctx.fillStyle = '#6b5a3c';
+      ctx.beginPath();
+      ctx.moveTo(x - w * 1.6, base); ctx.quadraticCurveTo(x - w * 0.6, base - 10 * sc, x - w * 0.5, base - 80 * sc);
+      ctx.lineTo(x - w * 0.42, -10); ctx.lineTo(x + w * 0.42, -10);
+      ctx.lineTo(x + w * 0.5, base - 80 * sc); ctx.quadraticCurveTo(x + w * 0.6, base - 10 * sc, x + w * 1.6, base);
+      ctx.fill();
+      const g = ctx.createLinearGradient(x - w * 0.5, 0, x - w * 0.1, 0);
+      g.addColorStop(0, 'rgba(255,240,200,0.25)'); g.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - w * 0.5, -10, w * 0.4, base - 80 * sc + 10);
+      ctx.strokeStyle = '#4a7a3a'; ctx.lineWidth = 2.2 * sc;
+      const r = rng(it.seed);
+      for (let v = 0; v < it.vines; v++) {
+        const vx = x + (r() - 0.2) * 160 * sc, vy = base - (140 + r() * 160) * sc;
+        ctx.beginPath(); ctx.moveTo(vx, -10);
+        ctx.quadraticCurveTo(vx + 30 * sc * Math.sin(t * W0 * 2 + v), vy * 0.6, vx + 8 * sc, vy); ctx.stroke();
+      }
+    } else {
+      fern(ctx, x, base + 4 * sc, it.s, it.seed, '#3f8a4a');
+    }
+  });
+}
+function groundY(xs, t) {          // gentle undulation that scrolls with the ground
+  const wx = xs + SD * sc;      // world x
+  const k = TAU / (layers.gr.L / 9);
+  return oy - 3 * sc + Math.sin(wx * k) * 1.6 * sc + Math.sin(wx * k * 2.7 + 1) * 0.9 * sc;
+}
+function drawGround(t) {
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (let x = 0; x <= W + 20; x += 20) ctx.lineTo(x, groundY(x, t));
+  ctx.lineTo(W, H); ctx.closePath();
+  const g = ctx.createLinearGradient(0, oy, 0, H);
+  g.addColorStop(0, '#8fb35a'); g.addColorStop(0.25, '#6a9645'); g.addColorStop(1, '#3a5e2a');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(235,245,170,0.4)'; ctx.lineWidth = 1.2 * sc;
+  ctx.beginPath(); for (let x = 0; x <= W + 20; x += 20) x ? ctx.lineTo(x, groundY(x, t)) : ctx.moveTo(x, groundY(x, t)); ctx.stroke();
+}
+// Fallen logs lie across the path; the panther clears each one at the top of its leap.
+function drawLog(t) {
+  for (const j of JUMPS) {
+    const x = ox + (j.logD - SD) * sc;
+    if (x < -220 * sc || x > W + 220 * sc) continue;
+    const hl = j.half * sc, r = j.r * sc, y = oy - r + 2 * sc;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.ellipse(x + 6 * sc, oy + 2 * sc, hl + 12 * sc, 3.5 * sc, 0, 0, TAU); ctx.fill();
+    const g = ctx.createLinearGradient(0, y - r, 0, y + r);
+    g.addColorStop(0, '#222a3b'); g.addColorStop(0.35, '#0f1420'); g.addColorStop(1, '#05070b');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(x - hl, y - r); ctx.lineTo(x + hl, y - r + 1.5 * sc);
+    ctx.quadraticCurveTo(x + hl + 5 * sc, y, x + hl, y + r); ctx.lineTo(x - hl, y + r);
+    ctx.quadraticCurveTo(x - hl - 5 * sc, y, x - hl, y - r); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.2 * sc;      // bark ridges
+    for (let i = 1; i < 5; i++) { const yy = y - r + i * r * 0.4; ctx.beginPath(); ctx.moveTo(x - hl + 4 * sc, yy); ctx.quadraticCurveTo(x, yy + (i % 2 ? 2 : -2) * sc, x + hl - 4 * sc, yy + 1 * sc); ctx.stroke(); }
+    ctx.fillStyle = '#17202f'; ctx.beginPath(); ctx.ellipse(x - hl, y, 4.5 * sc, r, 0, 0, TAU); ctx.fill();   // cut end
+    ctx.strokeStyle = 'rgba(120,140,190,0.35)'; ctx.lineWidth = 0.9 * sc;
+    for (const rr of [0.4, 0.75]) { ctx.beginPath(); ctx.ellipse(x - hl, y, 4.5 * sc * rr, r * rr, 0, 0, TAU); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(170,192,245,0.55)'; ctx.lineWidth = 1.4 * sc;   // moonlit top edge
+    ctx.beginPath(); ctx.moveTo(x - hl, y - r + 0.5 * sc); ctx.lineTo(x + hl, y - r + 2 * sc); ctx.stroke();
+    ctx.fillStyle = 'rgba(40,70,70,0.55)';                                    // a little moss
+    for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.ellipse(x - hl * 0.6 + i * hl * 0.22, y - r + 1.5 * sc, 6 * sc, 2 * sc, 0, 0, TAU); ctx.fill(); }
+  }
+}
+function tufts(t, front) {
+  eachWrapped(layers.gr, t, 40 * sc, (it, x) => {
+    if (it.front !== front) return;
+    const r = rng(it.seed + 1), y = groundY(x, t) + (front ? 6 * sc : 0);
+    for (let i = 0; i < it.n; i++) {
+      const a = (-90 + (r() - 0.5) * 70) * DEG, h = it.h * (0.5 + r() * 0.6) * (front ? 0.8 : 1);
+      const bx = x + (r() - 0.5) * 10 * sc;
+      ctx.strokeStyle = front ? '#05070d' : `rgba(${60 + r() * 40},${80 + r() * 40},${130 + r() * 50},0.55)`;
+      ctx.lineWidth = 1.4 * sc;
+      ctx.beginPath(); ctx.moveTo(bx, y);
+      ctx.quadraticCurveTo(bx + Math.cos(a) * h * 0.5, y + Math.sin(a) * h * 0.6, bx + Math.cos(a) * h + Math.sin(t * W0 * 6 + i) * sc, y + Math.sin(a) * h);
+      ctx.stroke();
+    }
+  });
+}
+
+// ---- panther compositing -----------------------------------------------------
+const RIM = 'rgb(176,200,255)';
+let JL = 0, JP = 0;      // current jump lift and pitch, applied to everything drawn as "the panther"
+let CAMX = 0, CAMY = 0;     // how far the camera has risen over the panther (screen px), 0 for the side view
+function setGroundTransform(c) { c.setTransform(sc * AK, 0, 0, sc * AK, ox + CAMX + AX * sc, oy + CAMY + AY * sc); }
+function setBodyTransform(c) {
+  c.setTransform(sc * AK, 0, 0, sc * AK, ox + CAMX + AX * sc, oy + CAMY + AY * sc);
+  c.translate(0, JL - 120); c.rotate(JP * RC * DEG); c.translate(0, 120);   // body pitch only reads as a tilt from the side
+}
+const STRANDS = (() => {
+  const r = rng(11), a = [], b = [];
+  for (let i = 0; i < 460; i++) {
+    const x = -135 + r() * 285, y = -166 + r() * 100, ang = (176 + (r() - 0.5) * 26 + (y + 120) * 0.1) * DEG, len = 2.5 + r() * 3.5;
+    (r() < 0.5 ? a : b).push([x, y, Math.cos(ang) * len, Math.sin(ang) * len]);
+  }
+  return { a, b };
+})();
+function strandsAlong(c, pts, halfw, n, seed) {   // hairs running down a limb
+  c.beginPath();
+  for (let s = 0; s < pts.length - 1; s++) {
+    const [ax, ay] = pts[s], [bx, by] = pts[s + 1], dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, nx = dy / L, ny = -dx / L;
+    for (let i = 0; i < n; i++) {
+      const u = hh(i + seed, s), side = (hh(s + seed, i) - 0.5) * 2 * halfw[s];
+      const x = ax + dx * u + nx * side, y = ay + dy * u + ny * side;
+      c.moveTo(x, y); c.lineTo(x + dx / L * 6, y + dy / L * 6);
+    }
+  }
+  c.stroke();
+}
+
+// dust kicked up by galloping paws and by landings; it stays put in the world as the cat moves on
+function drawDust() {
+  for (const e of EVENTS) {
+    if (e.px === undefined) continue;
+    const a = STL - e.t; if (a < 0 || a > 1.1) continue;
+    const x0 = e.px - (SD - tab(TAB.d, e.t)), k = e.k === 'land' ? 1.5 : 1, z0 = e.near ? 22 : -22;   // where the paw struck, in body units
+    for (let i = 0; i < 5; i++) {
+      const r1 = hh(e.t * 17.3, i), r2 = hh(i, e.t * 5.1);
+      const rise = (6 + 26 * r1) * (1 - Math.exp(-a * 3)), drift = (r2 - 0.4) * 30 * a, zs = (hh(i + 3, e.t) - 0.5) * 30 * a;
+      const ck = camK(x0 + drift, -rise, z0 + zs); if (ck > 1.6) continue;
+      const q = pr(x0 + drift, -rise - 2, z0 + zs), x = ox + CAMX + q[0] * sc, y = oy + CAMY + q[1] * sc;
+      const rad = (3 + 10 * a + 3 * r2) * sc * ck * 1.4, al = 0.2 * k * Math.pow(1 - a / 1.1, 2);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      g.addColorStop(0, `rgba(205,190,150,${al})`); g.addColorStop(1, 'rgba(205,190,150,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+  }
+}
+
+// ---- the turn: a real 3D rotation of the rig ------------------------------------
+// The panther turns to its left (away from the camera) while the camera swings behind it and rises,
+// ending in a game-style chase view that looks past the panther to where it is going. Rig points are
+// x forward, y down, z toward the camera; the side view is the plane z = 0.
+// every 2 s the camera swings the other way: side → chase → side → chase …  (0 = side view, 1 = chase view)
+const FLIP = 2, SWING = 1.2;
+const TURN = t => 1;   // the camera stays over the shoulder the whole time
+const PIV = -110;                       // the body turns about this height
+const CH_TH = 24 * DEG, CH_D = 900;     // chase camera: how far it looks down, and how far behind it sits (body units)
+let RU = 0, RC = 1, RS = 0, CT = 1, ST = 0, LEGK = 1;   // turn amount, cos/sin of the turn, cos/sin of the camera tilt, upper-leg thickness
+function setTurn(u) {
+  RU = u; const a = u * Math.PI / 2, th = u * CH_TH;
+  RC = Math.cos(a); RS = Math.sin(a); CT = Math.cos(th); ST = Math.sin(th); LEGK = 1 - 0.3 * RS * RS;
+}
+function camK(x, y, z) { return camK0(x * FA, y, z * FA); }   // in the frame of the animal being drawn
+function camK0(x, y, z) {               // perspective: nearer is larger, further is smaller (none in the side view)
+  const b = x * RS - z * RC, depth = b * CT - (PIV - y) * ST;
+  return CH_D / Math.max(CH_D * 0.2, CH_D + depth * RU);
+}
+function pr(x, y, z) {                  // rig point → screen-plane point (body units)
+  x *= FA; z *= FA;                     // an animal facing the camera is turned half way round
+  const a = x * RC + z * RS, b = x * RS - z * RC, h = PIV - y, k = camK0(x, y, z);
+  return [a * k, PIV - (b * ST + h * CT) * k];
+}
+function facing(nx, ny, nz) { nx *= FA; nz *= FA; return (-nx * RS + nz * RC) * CT - ny * ST; }   // >0 when a surface faces the camera
+function rigAffine(z, rx = 0, ry = -120) {   // the plane at depth z, scaled for perspective around a reference point
+  const zf = z * FA, A = [RC * FA, -RS * ST * FA, 0, CT, zf * RS, PIV * (1 - CT) + zf * RC * ST], k = camK(rx, ry, z);
+  return mulAff([k, 0, 0, k, 0, PIV * (1 - k)], A);
+}
+function mulAff(A, B) {
+  return [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3],
+          A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
+}
+function headAffine(H, lz) { const ca = Math.cos(H.a), sa = Math.sin(H.a), r = headPt(H, 40, 0, lz); return mulAff(rigAffine(HS * lz, r[0], r[1]), [HS * ca, HS * sa, -HS * sa, HS * ca, H.x, H.y]); }
+function headPt(H, lx, ly, lz) {        // head-local point → rig point
+  const ca = Math.cos(H.a), sa = Math.sin(H.a);
+  return [H.x + HS * (lx * ca - ly * sa), H.y + HS * (lx * sa + ly * ca), HS * lz];
+}
+const lin = (t, x) => { if (x <= t[0][0]) return t[0][1]; for (let i = 0; i < t.length - 1; i++) if (x <= t[i + 1][0]) return lerp(t[i][1], t[i + 1][1], (x - t[i][0]) / (t[i + 1][0] - t[i][0])); return t[t.length - 1][1]; };
+function crossY(poly, x) {              // top and bottom of an outline at this x
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    if (a[0] === b[0] || (a[0] - x) * (b[0] - x) > 0) continue;
+    const y = a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]);
+    lo = Math.min(lo, y); hi = Math.max(hi, y);
+  }
+  return [lo, hi];
+}
+function hull2(pts) {                   // convex hull (monotone chain)
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr2 = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const q of p) { while (lo.length > 1 && cr2(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (up.length > 1 && cr2(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function fillPoly(c, pts) { c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]); c.closePath(); c.fill(); }
+// a solid from a side outline: oval cross-sections along its length, their widths from a table
+function tube(outline, wTbl, n, M, map, capK = 1.25) {
+  const poly = sampleSpline(outline, true, 6).map(p => [p.x, p.y]);
+  let x0 = Infinity, x1 = -Infinity; for (const p of poly) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); }
+  const rings = [];
+  for (let k = 0; k < n; k++) {
+    const x = (x0 + x1) / 2 - (x1 - x0) / 2 * Math.cos(Math.PI * (k + 0.5) / n);
+    const [lo, hi] = crossY(poly, x); if (!isFinite(lo)) continue;
+    const yc = (lo + hi) / 2, hv = (hi - lo) / 2, w = Math.min(lin(wTbl, x), hv * capK + 4), ring = [];
+    for (let a = 0; a < M; a++) { const t = TAU * a / M; ring.push(map(x, yc + hv * Math.cos(t), w * Math.sin(t))); }
+    rings.push(ring);
+  }
+  const polys = [];
+  for (let i = 0; i < rings.length - 1; i++) polys.push(hull2(rings[i].concat(rings[i + 1])));
+  return { polys, poly };
+}
+const W_BODY = [[-128, 14], [-112, 40], [-92, 47], [-60, 42], [-20, 37], [20, 38], [60, 44], [96, 51], [126, 45], [150, 24]];   // half-width seen from above
+const W_HEAD = [[-4, 12], [4, 30], [16, 39], [32, 41], [46, 37], [58, 30], [68, 22], [78, 15], [84, 8]];
+const LAT = { hind: { HJ: 26, K: 38, Hk: 32, F: 27, toe: 27 }, fore: { SC: 14, SJ: 30, E: 36, Wr: 29, F: 25, toe: 25 } };   // how far out from the spine each joint sits
+const EAR_RIM = (() => {               // the ear's outline, sampled from the profile ear's curves
+  const q = (a, b, c, t) => [(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * b[0] + t * t * c[0], (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * b[1] + t * t * c[1]];
+  const out = [];
+  for (let i = 0; i <= 5; i++) out.push(q([6, -24], [6, -44], [17, -48], i / 5));
+  for (let i = 1; i <= 5; i++) out.push(q([17, -48], [29, -46], [33, -30], i / 5));
+  return out;
+})();
+function project3D(P, u, tl) {
+  if (u <= 0.0001) return P;
+  // body
+  const body = tube(P.hull, W_BODY, 22, 14, (x, y, z) => pr(x, y, z), 1.75);
+  const spine = [];
+  for (let i = 0; i <= 8; i++) { const x = lerp(-110, 112, i / 8), [lo] = crossY(body.poly, x); if (isFinite(lo)) spine.push(pr(x, lo + 3, 0)); }
+  // legs: every joint gets its distance out from the spine; near legs on +z, far legs on −z
+  const legs = {};
+  for (const D of LEGS) {
+    const L = P.legs[D.id], s = D.far ? -1 : 1, lat = L.hind ? LAT.hind : LAT.fore, out = { ...L, fz: s * lat.F };
+    if (L.hind) { out.th = thighOutline(L, D.far).map(p => pr(p[0], p[1], s * 30)); out.thr = 20 * RS; }
+    for (const k in lat) out[k] = pr(L[k][0], L[k][1], s * lat[k]);
+    legs[D.id] = out;
+  }
+  // tail: swings side to side with the walk (only visible once the camera is up)
+  const c = tab(TAB.w, tl), N = P.tail.length - 1;
+  const tail = P.tail.map(([x, y], i) => pr(x, y, 26 * Math.pow(i / N, 1.2) * Math.sin(TAU * c / 2 - i * 0.38)));
+  // head: a solid from the profile outline, plus two ears
+  const H = P.head, hm = (x, y, z) => { const r = headPt(H, x, y, z); return pr(r[0], r[1], r[2]); };
+  const headT = tube(HEAD_PTS, W_HEAD, 14, 12, hm, 1.9);
+  const polys = headT.polys.slice();
+  for (const s of [-1, 1]) {
+    const k = s > 0 ? 1 : 0.92, dx = s > 0 ? 0 : 9, dy = s > 0 ? 0 : -3, ea = (H.ear || 0) * (s > 0 ? 1 : 0.8), ce = Math.cos(ea), se = Math.sin(ea);
+    const place = (x, y) => { const px = x - 19, py = y + 30; return [19 + dx + k * (px * ce - py * se), -30 + dy + k * (px * se + py * ce)]; };
+    const pts = EAR_RIM.map(([x, y]) => { const p = place(x, y); return hm(p[0], p[1], s * 25); });
+    for (const zz of [15, 35]) { const p = place(19, -27); pts.push(hm(p[0], p[1], s * zz)); }
+    polys.push(hull2(pts));
+  }
+  const head = { ...H, polys };
+  const neck = pr(H.x - 16, H.y + 12, 0);
+  return { ...P, legs, tail, head, tube: body.polys, spine, neck };
+}
+function pose(tl, tu = tl) { const u = TURN(tu); setTurn(u); return project3D(poseSide(tl), u, tl); }
+
+// ---- the chase view: what lies ahead of the panther, in perspective ----
+// a trail runs ahead toward the low sun, with trees passing on both sides and grass, stones and flowers underfoot
+const CH_SPAN = 3600;                   // the world repeats over this distance (body units)
+const CH_DECOR = (() => { const r = rng(77), a = []; for (let i = 0; i < 520; i++) a.push({ wf: r() * CH_SPAN, z: (r() - 0.5) * 2600, kind: r(), s: r(), c: r() }); return a; })();
+const CH_TREES = (() => {
+  const r = rng(91), a = [];
+  for (let i = 0; i < 40; i++) {
+    const sd = i % 2 ? 1 : -1;
+    a.push({ wf: r() * CH_SPAN, z: sd * (420 + r() * 1100), ht: 420 + r() * 220, cr: 120 + r() * 70, tw: 20 + r() * 12, seed: 1 + Math.floor(r() * 1e6) });
+  }
+  return a;
+})();
+const CH_FAR = (() => { const r = rng(55), a = []; for (let i = 0; i < 90; i++) a.push({ f: 3200 + r() * 2600, z: (r() - 0.5) * 9000, ht: 380 + r() * 300, cr: 150 + r() * 120, seed: 1 + Math.floor(r() * 1e6) }); return a; })();
+const trailZ = wf => 22 * Math.sin(wf / 700) + 12 * Math.sin(wf / 310 + 1);   // the trail wanders a little around the panther's line
+function drawChase(t, a) {
+  if (a <= 0.001 || RU <= 0.02) return;
+  const px = p => [ox + CAMX + p[0] * sc, oy + CAMY + p[1] * sc];
+  const P3 = (f, z, hg) => px(pr(f, -hg, z));
+  const okAt = (f, z) => CH_D + ((f * RS - z * RC) * CT + 110 * ST) * RU > CH_D * 0.3;   // still in front of the camera
+  const hy = oy + CAMY + (PIV - CH_D * ST / (CT * RU)) * sc;                           // the horizon
+  const van = P3(1e6, 0, 0);                                                          // where the trail meets the horizon
+  ctx.save(); ctx.globalAlpha = a;
+  // sky, with the sun low over the end of the trail
+  const sky = ctx.createLinearGradient(0, hy - H * 0.55, 0, hy);
+  sky.addColorStop(0, '#3a86d4'); sky.addColorStop(0.65, '#a9d4ef'); sky.addColorStop(1, '#f3eedb');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, Math.max(0, hy + 2));
+  const sx = van[0], sy = hy - H * 0.07, sr = S * 0.05;
+  const halo = ctx.createRadialGradient(sx, sy, sr, sx, sy, sr * 9);
+  halo.addColorStop(0, 'rgba(255,240,190,0.75)'); halo.addColorStop(1, 'rgba(255,240,190,0)');
+  ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff6d6'; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  for (const [cx, cy, r] of [[0.12, 0.35, 0.05], [0.5, 0.62, 0.065], [0.8, 0.28, 0.045]]) {
+    const x = ((W * cx + t * 7) % (W * 1.3)) - W * 0.15, y = hy - (hy + 50) * cy, rr = S * r;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.arc(x + rr * 1.3, y - rr * 0.35, rr * 0.8, 0, TAU); ctx.arc(x + rr * 2.3, y, rr * 0.9, 0, TAU); ctx.fill();
+  }
+  // ground
+  const gg = ctx.createLinearGradient(0, hy, 0, H);
+  gg.addColorStop(0, '#c4d6a0'); gg.addColorStop(0.06, '#93b65c'); gg.addColorStop(0.45, '#6f9a47'); gg.addColorStop(1, '#4f7c35');
+  ctx.fillStyle = gg; ctx.fillRect(0, hy, W, H - hy + 2);
+  // distant woods along the horizon
+  const items = [];
+  const tIn = smooth(clamp((RU - 0.1) / 0.3));                                     // trees grow in as the camera swings behind
+  for (const tr of CH_FAR) items.push({ d: tr.f * RS - tr.z * RC, draw: () => drawTreeP(P3, tr.f, tr.z, tr, 0.55 * tIn) });
+  items.push({ d: 2500, draw: () => {                                                // haze over the far distance
+    const hz = ctx.createLinearGradient(0, hy - 60 * sc, 0, hy + 120 * sc);
+    hz.addColorStop(0, 'rgba(240,238,220,0)'); hz.addColorStop(0.45, 'rgba(240,238,220,0.5)'); hz.addColorStop(1, 'rgba(240,238,220,0)');
+    ctx.fillStyle = hz; ctx.fillRect(0, hy - 60 * sc, W, 180 * sc);
+  } });
+  for (const tr of CH_TREES) {
+    const f = (((tr.wf - SD) % CH_SPAN) + CH_SPAN) % CH_SPAN - 700;
+    if (!okAt(f, tr.z)) continue;
+    if (f * RS - tr.z * RC < 0 && Math.abs(f * RC + tr.z * RS) < 320) continue;      // never between the camera and the panther
+    items.push({ d: f * RS - tr.z * RC, draw: () => drawTreeP(P3, f, tr.z, tr, tIn * clamp(1 - (f - 1800) / 1100)) });
+  }
+  // the trail
+  const L = [], Rr = [];
+  for (let i = 0; i <= 48; i++) {
+    const f = -650 + Math.pow(i / 48, 2.2) * 9000;
+    if (!okAt(f, 0)) continue;
+    const zc = trailZ(f + SD), w = 62 + 10 * Math.sin((f + SD) / 230);
+    L.push(P3(f, zc - w, 0)); Rr.push(P3(f, zc + w, 0));
+  }
+  if (L.length > 1) {
+    const poly = L.concat(Rr.reverse());
+    ctx.fillStyle = 'rgba(196,176,128,0.35)'; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(196,176,128,0.25)'; ctx.lineWidth = 14 * sc;
+    ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]); for (const p of poly) ctx.lineTo(p[0], p[1]); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(178,154,104,0.55)'; ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]); for (const p of poly) ctx.lineTo(p[0], p[1]); ctx.closePath(); ctx.fill();
+  }
+  // grass, stones and flowers
+  for (const it of CH_DECOR) {
+    const f = (((it.wf - SD) % CH_SPAN) + CH_SPAN) % CH_SPAN - 700;
+    if (!okAt(f, it.z) || f > 2600) continue;
+    items.push({ d: f * RS - it.z * RC, draw: () => drawDecorP(P3, f, it) });
+  }
+  items.sort((p, q) => q.d - p.d);
+  for (const it of items) it.draw();
+  ctx.restore();
+}
+function drawTreeP(P3, f, z, tr, al) {
+  if (al <= 0) return;
+  const b = P3(f, z, 0), tp = P3(f, z, tr.ht), k = Math.hypot(tp[0] - b[0], tp[1] - b[1]) / (tr.ht * sc * CT + 1e-6);
+  const ga = ctx.globalAlpha; ctx.globalAlpha = ga * al;
+  const tw = (tr.tw || 26) * k * sc;
+  ctx.fillStyle = 'rgba(30,50,20,0.25)'; ctx.beginPath(); ctx.ellipse(b[0] + tw * 1.5, b[1], tw * 3, tw * 0.9, 0, 0, TAU); ctx.fill();   // shadow at the foot
+  ctx.fillStyle = '#6b5a3c';
+  ctx.beginPath(); ctx.moveTo(b[0] - tw, b[1]); ctx.lineTo(tp[0] - tw * 0.55, tp[1]); ctx.lineTo(tp[0] + tw * 0.55, tp[1]); ctx.lineTo(b[0] + tw, b[1]); ctx.fill();
+  ctx.fillStyle = 'rgba(255,240,200,0.18)'; ctx.beginPath(); ctx.moveTo(b[0] + tw * 0.2, b[1]); ctx.lineTo(tp[0] + tw * 0.1, tp[1]); ctx.lineTo(tp[0] + tw * 0.55, tp[1]); ctx.lineTo(b[0] + tw, b[1]); ctx.fill();
+  const r = rng(tr.seed), cr = tr.cr * k * sc;
+  for (let i = 0; i < 7; i++) {
+    const dx = (r() - 0.5) * 1.6 * cr, dy = -(r() * 0.9) * cr, rr = cr * (0.45 + r() * 0.35);
+    ctx.fillStyle = i < 3 ? '#3f7a4a' : i < 5 ? '#4f8f5a' : '#64a46c';
+    ctx.beginPath(); ctx.arc(tp[0] + dx, tp[1] + dy, rr, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = ga;
+}
+function drawDecorP(P3, f, it) {
+  const p = P3(f, it.z, 0), q = P3(f, it.z, 10), k = Math.max(0.05, (p[1] - q[1]) / (10 * sc * CT + 1e-6)), s = k * sc, sq = Math.max(0.3, ST * 1.4);
+  const ga = ctx.globalAlpha; ctx.globalAlpha = ga * clamp(1 - (f - 1900) / 700);
+  if (it.kind < 0.3) {                                // a soft patch of darker or lighter grass
+    const r = (40 + 80 * it.s) * s, light = it.c < 0.45;
+    ctx.fillStyle = light ? 'rgba(170,200,100,0.22)' : 'rgba(55,95,40,0.22)';
+    ctx.beginPath(); ctx.ellipse(p[0], p[1], r, r * sq, 0, 0, TAU); ctx.fill();
+  } else if (it.kind < 0.82) {                        // a grass clump
+    ctx.strokeStyle = it.c < 0.5 ? 'rgba(45,85,35,0.75)' : 'rgba(150,185,85,0.7)'; ctx.lineWidth = Math.max(0.6, 1.6 * s);
+    ctx.beginPath();
+    for (let k2 = 0; k2 < 5; k2++) { const ang = (-90 + (k2 - 2) * 16 + (it.s - 0.5) * 20) * DEG, l = (9 + 8 * it.c) * s; ctx.moveTo(p[0] + (k2 - 2) * 2 * s, p[1]); ctx.lineTo(p[0] + (k2 - 2) * 2 * s + Math.cos(ang) * l, p[1] + Math.sin(ang) * l); }
+    ctx.stroke();
+  } else if (it.kind < 0.93) {                        // a stone
+    const r = (4 + 6 * it.s) * s;
+    ctx.fillStyle = 'rgba(60,60,50,0.3)'; ctx.beginPath(); ctx.ellipse(p[0] + r * 0.5, p[1] + r * 0.2, r * 1.3, r * 0.6, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#a7a497'; ctx.beginPath(); ctx.ellipse(p[0], p[1] - r * 0.3, r * 1.1, r * 0.75, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,240,0.45)'; ctx.beginPath(); ctx.ellipse(p[0] - r * 0.3, p[1] - r * 0.6, r * 0.5, r * 0.3, 0, 0, TAU); ctx.fill();
+  } else {                                            // little flowers
+    for (let k2 = 0; k2 < 3; k2++) {
+      ctx.fillStyle = k2 % 2 ? '#fff6c8' : '#f4d24a';
+      ctx.beginPath(); ctx.arc(p[0] + (k2 - 1) * 7 * s, p[1] - (4 + 4 * ((k2 + it.c * 3) % 2)) * s, Math.max(0.8, 2.4 * s), 0, TAU); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = ga;
+}
+
+// ---- the pack: other big cats running ahead of the panther, which catches and passes each one ----
+const COATS = {
+  panther: { fur: ['#191d27', '#0c0e13', '#040405'], far: '#05060a', rim: RIM, lt: '150,172,225' },
+  tiger:   { fur: ['#f2a456', '#da7a30', '#8a4418'], far: '#6a3210', rim: 'rgb(255,228,184)', lt: '255,236,200', belly: 'rgba(252,242,226,0.8)', muzzle: 'rgba(252,244,230,0.85)', mark: '#1d1208' },
+  lioness: { fur: ['#e8c88a', '#d0a868', '#8c6a3c'], far: '#6e5230', rim: 'rgb(255,240,206)', lt: '255,245,222', belly: 'rgba(246,234,208,0.6)', muzzle: 'rgba(248,238,218,0.7)' },
+  cheetah: { fur: ['#f0d08a', '#dcb466', '#9a7a40'], far: '#7a5c30', rim: 'rgb(255,240,202)', lt: '255,245,222', belly: 'rgba(250,244,228,0.75)', muzzle: 'rgba(250,244,230,0.7)', mark: '#1e150b' },
+};
+let COAT = COATS.panther, MARKS = null;
+// ---- two packs: ours runs together; waves of big cats charge toward it and slip through the gaps ----
+COATS.leopard = { fur: ['#e6b862', '#cc9442', '#7c5628'], far: '#5e4020', rim: 'rgb(255,236,196)', lt: '255,240,214', belly: 'rgba(250,240,220,0.75)', muzzle: 'rgba(250,242,226,0.7)', mark: '#24180c' };
+COATS.snow = { fur: ['#f1f1ec', '#d2d4ce', '#868a84'], far: '#6a6e68', rim: 'rgb(255,255,250)', lt: '255,255,250', belly: 'rgba(255,255,255,0.6)', muzzle: 'rgba(255,255,255,0.6)', mark: '#4a4c4a' };
+let FA = 1;                     // 1: the animal faces the way the panther runs; −1: it faces the camera
+const OURS = [                  // our pack, alongside the panther: forward offset, lane, size, gait timing
+  { fx: 90,  z: -165, size: 1.08, ph: 0.13, coat: COATS.tiger,   marks: 'stripes' },
+  { fx: 40,  z: 180,  size: 1.0,  ph: 0.29, coat: COATS.lioness, marks: null },
+  { fx: 170, z: -330, size: 0.9,  ph: 0.41, coat: COATS.cheetah, marks: 'spots' },
+];
+const V_CLOSE = 1500;           // how fast the two packs close on each other (body units / s)
+const WAVES = [                 // when each wave meets ours, and who runs in it: lane, coat, markings, size, how far behind the front
+  { t: 6.5,  cats: [[-310, 'lioness', null, 1.0, 120], [-103, 'lioness', null, 0.96, 0], [112, 'cheetah', 'spots', 0.9, 210]] },
+  { t: 14,   cats: [[-310, 'tiger', 'stripes', 1.08, 60], [-103, 'leopard', 'rosettes', 0.95, 230], [112, 'snow', 'rosettes', 0.92, 0], [340, 'leopard', 'rosettes', 0.95, 150]] },
+  { t: 21.5, cats: [[-520, 'cheetah', 'spots', 0.88, 260], [-310, 'snow', 'rosettes', 0.92, 90], [-103, 'cheetah', 'spots', 0.9, 0], [112, 'lioness', null, 1.0, 180], [340, 'tiger', 'stripes', 1.06, 40]] },
+];
+WAVES.forEach((w, wi) => w.cats.forEach((c, ci) => EVENTS.push({ t: w.t + c[4] / V_CLOSE, k: 'whoosh' })));   // a rush of air as each one flashes past
+const meetBump = t => WAVES.reduce((m, w) => Math.max(m, Math.exp(-(((t - w.t) / 1.1) ** 2))), 0);
+let AX = 0, AY = 0, AK = 1;   // where the animal being drawn sits relative to the panther (screen body units), and its size
+function placeAnimal(fx, z, size) {
+  const o = pr(0, 0, 0), p = pr(fx, 0, z), side = 1 - RU;
+  AX = p[0] - o[0];
+  AY = p[1] - o[1] + side * (z < 0 ? z * 0.06 : z * 0.55);
+  AK = size * camK(fx, PIV, z) / camK(0, PIV, 0) * (1 + side * z * 0.0009);
+}
+function drawPack(t) {
+  const spread = 1 + 0.25 * meetBump(STL);                     // our pack opens up as the other one comes through
+  const ents = [{ fx: 0, z: 0, me: true }];
+  OURS.forEach((a, i) => ents.push({ a, fa: 1, fx: a.fx + 40 * Math.sin(STL * 0.8 + i * 2.1), z: a.z * spread + 10 * Math.sin(STL * 0.6 + i) }));
+  WAVES.forEach((w, wi) => w.cats.forEach((c, ci) => {
+    const fx = (w.t - STL) * V_CLOSE + c[4];                    // still ahead while positive
+    if (fx < -480 || fx > 5200) return;
+    const slide = smooth(clamp((1900 - fx) / 1400));            // they aim at our pack, then slip sideways into the gaps
+    const z = c[0] * lerp(0.35, 1, slide) + 12 * Math.sin(STL * 1.3 + ci);
+    ents.push({ a: { size: c[3], ph: (0.17 * (ci + 1) + 0.31 * wi) % 0.6, coat: COATS[c[1]], marks: c[2] }, fa: -1, fx, z });
+  }));
+  for (const e of ents) e.d = e.fx * RS - e.z * RC;              // further from the camera first
+  ents.sort((p, q) => q.d - p.d);
+  for (const e of ents) {
+    if (e.me) { FA = 1; AX = 0; AY = 0; AK = 1; COAT = COATS.panther; MARKS = null; drawPanther(t); continue; }
+    FA = 1; placeAnimal(e.fx, e.z, e.a.size);
+    if (AK > 2.0 || Math.abs(AX) > 1000) continue;                  // off screen, or right at the camera
+    FA = e.fa; COAT = e.a.coat; MARKS = e.a.marks; drawPanther(t, e.a.ph);
+  }
+  FA = 1; AX = 0; AY = 0; AK = 1; COAT = COATS.panther; MARKS = null;
+}
+// markings sit on the 3D body surface, so they turn with it and only show on the side facing the camera
+const MARK_SETS = {
+  stripes: (() => { const r = rng(5), a = []; for (let x = -116; x < 130; x += 15 + r() * 7) a.push({ x, slant: (r() - 0.5) * 12, reach: 0.36 + r() * 0.24, w: 4 + r() * 3.5 }); return a; })(),
+  spots: (() => { const r = rng(9), a = []; for (let i = 0; i < 170; i++) a.push({ x: -125 + r() * 272, a: (0.3 + r() * 1.4) * Math.PI, r: 2.3 + r() * 2.1 }); return a; })(),
+};
+function drawMarks(c, P, kind) {
+  const poly = sampleSpline(P.hull, true, 4).map(p => [p.x, p.y]);
+  const at = (x, ang) => {        // a point on the body's surface: ang = π on the spine, ±π/2 on the flanks, 0 under the belly
+    const [lo, hi] = crossY(poly, x); if (!isFinite(lo)) return null;
+    const yc = (lo + hi) / 2, hv = (hi - lo) / 2, w = Math.min(lin(W_BODY, x), hv * 1.75 + 4);
+    return { p: pr(x, yc + hv * Math.cos(ang), w * Math.sin(ang)), f: facing(0, Math.cos(ang), Math.sin(ang)) };
+  };
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  if (COAT.belly) {                // pale underside along both lower flanks
+    c.strokeStyle = COAT.belly;
+    for (const [lw, al] of [[34, 0.18], [22, 0.22], [12, 0.25]]) for (const sd of [1, -1]) {   // soft layers, so it shades into the coat
+      c.lineWidth = lw; let prev = null;
+      for (let x = -84; x <= 128; x += 12) {
+        const s = at(x, sd * 0.12 * Math.PI);
+        if (s && prev && s.f > 0.02) { c.globalAlpha = al * clamp(s.f * 3) * clamp(Math.min(x + 84, 128 - x) / 40); c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(s.p[0], s.p[1]); c.stroke(); }
+        prev = s ? s.p : null;
+      }
+    }
+  }
+  if (kind === 'stripes') {
+    c.strokeStyle = COAT.mark;
+    for (const st of MARK_SETS.stripes) for (const sd of [1, -1]) {
+      let prev = null;
+      for (let k = 0; k <= 8; k++) {
+        const u = k / 8, ang = Math.PI * (1 - sd * st.reach * u), s = at(st.x + st.slant * u, ang);
+        if (s && prev && s.f > 0.02) { c.globalAlpha = clamp(s.f * 4); c.lineWidth = st.w * (1.1 - 0.6 * u); c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(s.p[0], s.p[1]); c.stroke(); }
+        prev = s ? s.p : null;
+      }
+    }
+  } else if (kind === 'spots') {
+    c.fillStyle = COAT.mark;
+    for (const sp of MARK_SETS.spots) {
+      const s = at(sp.x, sp.a); if (!s || s.f < 0.05) continue;
+      c.globalAlpha = clamp(s.f * 3); c.beginPath(); c.arc(s.p[0], s.p[1], sp.r, 0, TAU); c.fill();
+    }
+  } else if (kind === 'rosettes') {
+    c.strokeStyle = COAT.mark; c.lineWidth = 1.9;
+    for (const sp of MARK_SETS.spots) {
+      const s = at(sp.x, sp.a); if (!s || s.f < 0.05) continue;
+      c.globalAlpha = clamp(s.f * 3); const r = sp.r * 1.5, a0 = sp.x * 0.7;
+      for (let k = 0; k < 3; k++) { c.beginPath(); c.arc(s.p[0], s.p[1], r, a0 + k * TAU / 3, a0 + k * TAU / 3 + 1.4); c.stroke(); }
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+function drawPanther(t, ph = 0) {
+  const P = pose(Math.max(0, STL - ph), STL);
+  JL = P.lift; JP = P.pitch;
+
+  // soft ground shadow + contact shadows under planted paws (these stay on the ground)
+  setGroundTransform(ctx);
+  const high = clamp(1 + P.lift / 90);              // the shadow fades and shrinks as the cat rises
+  const groundEll = (x, y, z, rx, rz, thick) => {   // an ellipse lying on the ground, as the turned camera sees it
+    const C = pr(x, y, z), A = pr(x + 1, y, z), B = pr(x, y, z + 1);
+    ctx.save(); ctx.transform((A[0] - C[0]) * rx, (A[1] - C[1]) * rx, (B[0] - C[0]) * rz, (B[1] - C[1]) * rz + thick, C[0], C[1]);
+    ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill(); ctx.restore();
+  };
+  const sh = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  sh.addColorStop(0, `rgba(0,0,0,${0.6 * high})`); sh.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sh; groundEll(10 - 12 * RS, 2, -20 * RS, 170 * lerp(0.7, 1, high), 70, 15.3 * RC);
+  for (const L of LEGS) {                            // contact shadows under planted paws
+    const Lg = P.legs[L.id], w = Lg.Fw, lift = clamp(1 + w[1] / 14);
+    if (lift <= 0) continue;
+    ctx.fillStyle = `rgba(0,0,0,${0.55 * lift})`;
+    groundEll(w[0] + 4, 1, Lg.fz || 0, 15, 9, 3.2 * RC);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // far legs — behind the body, darker, only a whisper of rim
+  cFar.setTransform(1, 0, 0, 1, 0, 0); cFar.clearRect(0, 0, W, H);
+  cFar.globalCompositeOperation = 'source-over';
+  setBodyTransform(cFar); cFar.translate(5, -1.5); cFar.fillStyle = '#000';
+  drawLeg(cFar, P.legs.RH, true); drawLeg(cFar, P.legs.RF, true);
+  cFar.setTransform(1, 0, 0, 1, 0, 0);
+  cFar.globalCompositeOperation = 'source-in';
+  cFar.fillStyle = COAT.far; cFar.fillRect(0, 0, W, H);
+  cFar.globalCompositeOperation = 'source-over';
+  ctx.drawImage(mFar, 0, 0);
+
+  // near silhouette mask
+  cBody.globalCompositeOperation = 'source-over';
+  cBody.setTransform(1, 0, 0, 1, 0, 0); cBody.clearRect(0, 0, W, H);
+  setBodyTransform(cBody); cBody.fillStyle = '#000'; drawBody(cBody, P);
+  if (RU > 0.45) { drawLeg(cBody, P.legs.RH, true); drawLeg(cBody, P.legs.RF, true); }
+  cBody.setTransform(1, 0, 0, 1, 0, 0);
+
+  // rim light: the silhouette minus itself shifted away from the moon
+  cRim.globalCompositeOperation = 'source-over';
+  cRim.setTransform(1, 0, 0, 1, 0, 0); cRim.clearRect(0, 0, W, H);
+  cRim.drawImage(mBody, 0, 0);
+  cRim.globalCompositeOperation = 'source-in'; cRim.fillStyle = COAT.rim; cRim.fillRect(0, 0, W, H);
+  cRim.globalCompositeOperation = 'destination-out'; cRim.drawImage(mBody, 1.4 * sc, 2.1 * sc);
+  cRim.globalCompositeOperation = 'source-over';
+
+  // fur: deep blue-black, lighter where the moon reaches the back
+  cBody.globalCompositeOperation = 'source-in';
+  const gy = oy + CAMY + AY * sc, g = cBody.createLinearGradient(0, gy - 190 * sc * AK, 0, gy);
+  g.addColorStop(0, COAT.fur[0]); g.addColorStop(0.3, COAT.fur[1]); g.addColorStop(1, COAT.fur[2]);
+  cBody.fillStyle = g; cBody.fillRect(0, 0, W, H);
+  cBody.globalCompositeOperation = 'source-atop';
+  setBodyTransform(cBody);
+  const glow = (x, y, r, a) => {
+    const gg = cBody.createRadialGradient(x, y, 0, x, y, r);
+    gg.addColorStop(0, `rgba(${COAT.lt},${a})`); gg.addColorStop(1, 'rgba(' + COAT.lt + ',0)');
+    cBody.fillStyle = gg; cBody.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  const shade = (x, y, r, a) => {
+    const gg = cBody.createRadialGradient(x, y, 0, x, y, r);
+    gg.addColorStop(0, `rgba(0,0,0,${a})`); gg.addColorStop(1, 'rgba(0,0,0,0)');
+    cBody.fillStyle = gg; cBody.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  const LF = P.legs.LF, LH = P.legs.LH, RF = P.legs.RF, RHl = P.legs.RH, o = P.off;
+  const vis = RC * RC, top = RS * RS;                // how much the flank, and the back, face the camera
+  // light on the shoulder and haunch (the leg joints are already where the camera sees them)
+  glow(LF.SC[0] - 6, LF.SC[1] + 8, 32, 0.11);
+  glow((LF.SJ[0] + LF.E[0]) / 2 - 4, (LF.SJ[1] + LF.E[1]) / 2, 20, 0.07);
+  glow(LH.HJ[0] - 10, LH.HJ[1] - 14, 40, 0.1);
+  glow(lerp(LH.HJ[0], LH.K[0], 0.5) - 6, lerp(LH.HJ[1], LH.K[1], 0.5) - 4, 22, 0.06);
+  if (top > 0) {                                    // from above: shoulder blades and hips roll under the skin with each step
+    for (const L of [LF, RF]) glow(L.SC[0], L.SC[1], 30, 0.14 * top);
+    for (const L of [LH, RHl]) glow(L.HJ[0], L.HJ[1], 32, 0.1 * top);
+  }
+  // painted on the flank: these turn with it and fade as it turns away from the camera
+  cBody.save(); cBody.transform(...rigAffine(26)); cBody.globalAlpha = vis;
+  glow(10, -156 + o(10), 85, 0.07);
+  shade(40, -74 + o(40), 70, 0.35);
+  cBody.lineCap = 'round'; cBody.lineWidth = 0.6;
+  cBody.strokeStyle = 'rgba(105,125,175,0.065)'; cBody.beginPath();
+  for (const s of STRANDS.a) { cBody.moveTo(s[0], s[1] + o(s[0])); cBody.lineTo(s[0] + s[2], s[1] + s[3] + o(s[0])); }
+  cBody.stroke();
+  cBody.strokeStyle = 'rgba(0,0,0,0.22)'; cBody.beginPath();
+  for (const s of STRANDS.b) { cBody.moveTo(s[0], s[1] + o(s[0])); cBody.lineTo(s[0] + s[2], s[1] + s[3] + o(s[0])); }
+  cBody.stroke();
+  cBody.strokeStyle = 'rgba(70,80,104,0.07)'; cBody.lineWidth = 1.6;            // ghost rosettes ride on the torso
+  for (const ro of ROSETTES) {
+    const y = ro.y + o(ro.x);
+    for (let k = 0; k < ro.gaps; k++) {
+      const a0 = ro.rot + k * TAU / ro.gaps;
+      cBody.beginPath(); cBody.arc(ro.x, y, ro.r, a0, a0 + TAU / ro.gaps * 0.62); cBody.stroke();
+    }
+  }
+  cBody.restore();
+  // sheen along the spine: the side-view highlight, and a broad stripe down the back from above
+  const spinePts = P.spine || P.hull.slice(1, 7);
+  cBody.lineJoin = 'round'; cBody.lineCap = 'round';
+  if (vis > 0.01) {
+    const sg = cBody.createLinearGradient(0, -172, 0, -120);
+    sg.addColorStop(0, 'rgba(' + COAT.lt + ',0.30)'); sg.addColorStop(1, 'rgba(' + COAT.lt + ',0)');
+    cBody.globalAlpha = vis; cBody.strokeStyle = sg; cBody.lineWidth = 9;
+    cBody.beginPath(); splinePath(cBody, spinePts, false); cBody.stroke();
+  }
+  if (top > 0.01 && P.spine) {
+    cBody.globalAlpha = top;
+    cBody.strokeStyle = 'rgba(' + COAT.lt + ',0.05)'; cBody.lineWidth = 40; cBody.beginPath(); splinePath(cBody, spinePts, false); cBody.stroke();
+    cBody.strokeStyle = 'rgba(170,190,235,0.06)'; cBody.lineWidth = 12; cBody.beginPath(); splinePath(cBody, spinePts, false); cBody.stroke();
+  }
+  // shadow where the legs meet the body (side view)
+  cBody.globalAlpha = vis;
+  shade(LF.SJ[0] - 8, LF.SJ[1] + 20, 24, 0.5);
+  shade(LH.HJ[0] + 18, LH.HJ[1] + 26, 26, 0.45);
+  cBody.globalAlpha = 1;
+  cBody.lineCap = 'round'; cBody.lineWidth = 0.6;
+  cBody.strokeStyle = 'rgba(105,125,175,0.07)';
+  strandsAlong(cBody, [LH.HJ, LH.K, LH.Hk, LH.F], [26, 14, 8], 14, 5);
+  strandsAlong(cBody, [LF.SJ, LF.E, LF.Wr, LF.F], [16, 11, 8], 12, 9);
+  // muscle seams (very soft, side view)
+  cBody.globalAlpha = vis;
+  cBody.strokeStyle = 'rgba(0,0,0,0.12)'; cBody.lineWidth = 3;
+  cBody.beginPath(); cBody.moveTo(LF.SC[0] + 18, LF.SC[1] + 6); cBody.quadraticCurveTo(LF.SJ[0] + 22, LF.SJ[1] + 4, LF.E[0] + 10, LF.E[1] + 2); cBody.stroke();
+  cBody.beginPath(); cBody.moveTo(LH.HJ[0] + 30, LH.HJ[1] - 4); cBody.quadraticCurveTo(LH.HJ[0] + 26, LH.HJ[1] + 30, LH.K[0] + 8, LH.K[1]); cBody.stroke();
+  cBody.globalAlpha = 1;
+  if (COAT.belly || MARKS) drawMarks(cBody, P, MARKS);           // pale underside, stripes or spots
+  if (COAT.muzzle) {                                              // pale muzzle and chin
+    cBody.save(); cBody.transform(...headAffine(P.head, 10)); cBody.globalAlpha = clamp(vis * 1.4 + top * 0.6);
+    const mz = cBody.createRadialGradient(70, 8, 2, 70, 8, 24);
+    mz.addColorStop(0, COAT.muzzle); mz.addColorStop(1, 'rgba(255,255,255,0)');
+    cBody.fillStyle = mz; cBody.fillRect(40, -20, 60, 50); cBody.restore();
+  }
+  // head sheen
+  cBody.save(); cBody.transform(...headAffine(P.head, 0));
+  const hg = cBody.createRadialGradient(36, -24, 0, 36, -24, 28);
+  hg.addColorStop(0, 'rgba(' + COAT.lt + ',0.2)'); hg.addColorStop(1, 'rgba(' + COAT.lt + ',0)');
+  cBody.fillStyle = hg; cBody.fillRect(0, -50, 90, 70);
+  cBody.globalAlpha = vis;
+  const mg = cBody.createRadialGradient(52, 34, 4, 52, 34, 34);        // jaw in shadow
+  mg.addColorStop(0, 'rgba(0,0,0,0.5)'); mg.addColorStop(1, 'rgba(0,0,0,0)');
+  cBody.fillStyle = mg; cBody.fillRect(14, 4, 80, 40);
+  cBody.restore();
+  if (top > 0.01) { const hp = headPt(P.head, 30, -28, 0), q = pr(hp[0], hp[1], hp[2]); glow(q[0], q[1], 36, 0.16 * top); }   // top of the head
+  cBody.setTransform(1, 0, 0, 1, 0, 0); cBody.globalCompositeOperation = 'source-over';
+
+  ctx.drawImage(mBody, 0, 0);
+  // rim: a soft wide bloom plus a crisp edge
+  ctx.save();
+  ctx.globalAlpha = 0.22; ctx.filter = `blur(${2.2 * sc}px)`; ctx.drawImage(mRim, 0, 0);
+  ctx.globalAlpha = 0.6; ctx.filter = `blur(${0.6 * sc}px)`; ctx.drawImage(mRim, 0, 0);
+  ctx.restore();
+
+  // face details: ear, brow, eye, nose, mouth, whiskers
+  setBodyTransform(ctx);
+  ctx.save(); ctx.globalAlpha = clamp(vis * 1.6);
+  ctx.transform(...headAffine(P.head, 16));
+  ctx.save(); ctx.translate(19, -30); ctx.rotate(P.head.ear); ctx.translate(-19, 30);       // inner ear
+  ctx.fillStyle = 'rgba(120,98,122,0.3)'; ctx.beginPath(); ctx.moveTo(12, -29); ctx.quadraticCurveTo(12, -41, 18, -44); ctx.quadraticCurveTo(25, -41, 27, -31); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(175,195,245,0.2)'; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(8, -33); ctx.quadraticCurveTo(8, -45, 17, -48); ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(160,180,230,0.2)'; ctx.lineWidth = 1.1;                           // brow and cheekbone catch the light
+  ctx.beginPath(); ctx.moveTo(46, -29); ctx.quadraticCurveTo(58, -27, 66, -18); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(50, -6); ctx.quadraticCurveTo(60, -3, 68, 0); ctx.stroke();
+  const eg = ctx.createRadialGradient(57, -16, 0, 57, -16, 13);
+  eg.addColorStop(0, 'rgba(210,220,110,0.3)'); eg.addColorStop(1, 'rgba(210,220,110,0)');
+  ctx.fillStyle = eg; ctx.fillRect(40, -32, 36, 36);
+  ctx.save(); ctx.translate(57, -16); ctx.rotate(-12 * DEG); ctx.scale(1, P.eye);
+  const ig = ctx.createRadialGradient(0.5, 0, 0, 0, 0, 6.4);
+  ig.addColorStop(0, '#f2e48a'); ig.addColorStop(0.6, '#c2ab38'); ig.addColorStop(1, '#5e5218');
+  ctx.fillStyle = ig; ctx.beginPath(); ctx.ellipse(0, 0, 6.4, 3.8, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#040404'; ctx.beginPath(); ctx.ellipse(0.4, 0, 2.5, 3.3, 0, 0, TAU); ctx.fill();   // wide pupil: it is night
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(-1.7, -1.3, 0.9, 0, TAU); ctx.fill();
+  ctx.strokeStyle = '#020202'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, 6.5, 3.9, 0, Math.PI * 1.02, Math.PI * 1.98); ctx.stroke();   // upper lid
+  ctx.restore();
+  ctx.fillStyle = 'rgba(112,88,104,0.6)'; ctx.beginPath(); ctx.ellipse(82.5, -5, 3.8, 3, -0.2, 0, TAU); ctx.fill();   // nose pad
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.ellipse(83.5, -4.5, 1.1, 1.5, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(190,200,240,0.3)'; ctx.beginPath(); ctx.ellipse(81, -7.2, 1.8, 0.9, -0.3, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,135,180,0.28)'; ctx.lineWidth = 0.9;                           // mouth
+  ctx.beginPath(); ctx.moveTo(81, 1); ctx.quadraticCurveTo(79, 6, 70, 7); ctx.quadraticCurveTo(62, 8, 55, 5); ctx.stroke();
+  ctx.fillStyle = 'rgba(150,170,220,0.26)';                                                   // whisker pad dots
+  for (const [dx, dy] of [[72, 1], [68, 3], [73, 5], [66, 6]]) { ctx.beginPath(); ctx.arc(dx, dy, 0.7, 0, TAU); ctx.fill(); }
+  const sw = -0.35 * P.wG + 0.04 * Math.sin(STL * 2.3);
+  ctx.strokeStyle = 'rgba(205,218,255,0.42)'; ctx.lineWidth = 0.55;
+  for (const [a0, len, cv] of [[-24, 38, -6], [-9, 42, -4], [5, 42, 2], [19, 37, 6], [32, 30, 7]]) {
+    const a = a0 * DEG + sw, x1 = 72 + Math.cos(a) * len, y1 = 3 + Math.sin(a) * len;
+    ctx.beginPath(); ctx.moveTo(72, 3); ctx.quadraticCurveTo((72 + x1) / 2 + cv * 0.3, (3 + y1) / 2 + cv, x1 + cv * 0.3, y1 + cv * 0.5); ctx.stroke();
+  }
+  for (const [a0, len] of [[-70, 17], [-52, 20]]) {                                           // brow whiskers
+    const a = a0 * DEG + sw * 0.5; ctx.beginPath(); ctx.moveTo(60, -22); ctx.lineTo(60 + Math.cos(a) * len, -22 + Math.sin(a) * len); ctx.stroke();
+  }
+  ctx.restore();
+  drawTopFace(P);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+}
+// the face as the camera above sees it: two eyes, the nose and whiskers fanning out to both sides
+function drawTopFace(P) {
+  const a = smooth(clamp((RU - 0.3) / 0.4)); if (a <= 0) return;
+  const H = P.head, hp = (x, y, z) => { const r = headPt(H, x, y, z); return pr(r[0], r[1], r[2]); };
+  ctx.save();
+  for (const sd of [-1, 1]) {
+    const f = clamp(facing(0.25, -0.6, sd * 0.75) * 2.2) * a; if (f <= 0) continue;
+    const c0 = hp(58, -17, sd * 22), c1 = hp(64, -18, sd * 19), ang = Math.atan2(c1[1] - c0[1], c1[0] - c0[0]);
+    ctx.globalAlpha = f;
+    ctx.save(); ctx.translate(c0[0], c0[1]); ctx.rotate(ang);
+    const ig = ctx.createRadialGradient(0.5, 0, 0, 0, 0, 7);
+    ig.addColorStop(0, '#f2e48a'); ig.addColorStop(0.6, '#c2ab38'); ig.addColorStop(1, '#5e5218');
+    ctx.fillStyle = ig; ctx.beginPath(); ctx.ellipse(0, 0, 7, 3.6, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#040404'; ctx.beginPath(); ctx.ellipse(0.4, 0, 1.3, 2.9, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(-1.8, -1, 0.9, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#020202'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.ellipse(0, 0, 7.1, 3.7, 0, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.globalAlpha = a * clamp(facing(1, -0.3, 0) * 3);   // the nose only shows when the head faces the camera
+  const n0 = hp(83, -4, 0), n1 = hp(86, -4, 0), na = Math.atan2(n1[1] - n0[1], n1[0] - n0[0]);
+  ctx.save(); ctx.translate(n0[0], n0[1]); ctx.rotate(na);
+  ctx.fillStyle = 'rgba(112,88,104,0.75)'; ctx.beginPath(); ctx.ellipse(0, 0, 3.4, 4.6, 0, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = a;
+  ctx.strokeStyle = 'rgba(225,232,255,0.5)'; ctx.lineWidth = 0.6;
+  const sw = 2 * Math.sin(STL * 2.3);
+  for (const sd of [-1, 1]) for (const [ex, ey, ez] of [[98, -2, 40], [93, 3, 52], [85, 7, 58], [75, 9, 55]]) {
+    const p0 = hp(72, 3, sd * 17), p1 = hp(ex + sw, ey, sd * ez), m = hp((72 + ex) / 2, (3 + ey) / 2 + 5, sd * (13 + ez) / 2);
+    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.quadraticCurveTo(m[0], m[1], p1[0], p1[1]); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ---- foreground & atmosphere ---------------------------------------------------
+function drawForeground(t) {
+  eachWrapped(layers.fg, t, 500 * sc, (it, x) => {
+    const r = rng(it.seed); ctx.fillStyle = '#020306';
+    const y = H + 20 * sc;
+    for (let i = 0; i < 7; i++) {
+      const a = (-100 + (r() - 0.5) * 80) * DEG, len = (45 + r() * 60) * it.s * sc;
+      leafShape(ctx, x + (r() - 0.5) * 90 * sc, y, len, a, len * 0.18);
+    }
+  });
+}
+function drawFireflies(t) {}
+function drawMist(t, y, h, a) {
+  const g = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
+  const al = a * (0.8 + 0.2 * Math.sin(t * W0 * 2));
+  g.addColorStop(0, 'rgba(255,248,225,0)'); g.addColorStop(0.5, `rgba(255,248,225,${al})`); g.addColorStop(1, 'rgba(255,248,225,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, y - h / 2, W, h);
+}
+function drawRays() {}
+function vignette() {
+  const g = ctx.createRadialGradient(W / 2, H * 0.55, S * 0.4, W / 2, H * 0.55, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(20,40,20,0)'); g.addColorStop(1, 'rgba(20,40,20,0.35)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+// ---- main loop -----------------------------------------------------------------
+let startTime = performance.now();
+function frame(now) {
+  const t = Math.max(0, (now - startTime) / 1000) + T0;
+  STL = t % STORY; SD = tab(TAB.d, STL);
+  const u = TURN(STL), phi = -u * 90 * DEG, gTop = smooth(clamp(u * 4));
+  setTurn(u);                                         // the camera angle for everything drawn this frame   // the scenery turns under the camera while it is over the panther
+  CAMX = u * (W / 2 - ox); CAMY = u * (H * 0.66 - oy + 110 * sc);          // the camera centres on the panther
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#6d9a47'; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.translate(0, -u * H * 0.9); ctx.globalAlpha = 1 - gTop; drawSky(t); drawRays(); drawFar(t); drawMid(t); ctx.restore();   // the horizon drops away as the camera tips down
+  const turned = fn => { ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(phi); ctx.translate(-W / 2, -H / 2); fn(); ctx.restore(); };
+  turned(() => { if (u > 0) { ctx.fillStyle = '#6a9645'; ctx.fillRect(-W, oy + 20 * sc, 3 * W, 3 * H); } drawGround(t); drawLog(t); tufts(t, false); });
+  drawChase(t, gTop);
+  drawDust();
+  drawPack(t);
+  ctx.globalAlpha = 1 - gTop;
+  turned(() => tufts(t, true));
+  drawMist(t, oy + 4 * sc, 40 * sc, 0.1);
+  drawForeground(t);
+  ctx.globalAlpha = 1;
+  drawFireflies(t);
+  vignette();
+  const fade = STL < FIN ? 1 - STL / FIN : STL > SEND - FOUT ? Math.min(1, (STL - (SEND - FOUT)) / FOUT) : 0;
+  if (fade > 0) { ctx.fillStyle = `rgba(3,5,10,${smooth(fade)})`; ctx.fillRect(0, 0, W, H); }
+  if (!window.CAPTURING) requestAnimationFrame(frame);   // the frame renderer draws frames itself
+}
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(frame);
+
+// ---- sound: night pad, crickets, breeze, soft paw steps -------------------------
+let ac, master, wet, noiseBuf, audioOn = false, schedUntil = 0;
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function makeReverb() {
+  const len = ac.sampleRate * 4, buf = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+  const cv = ac.createConvolver(); cv.buffer = buf; return cv;
+}
+function noise(at, dur, type, freq, q, vol, pan = 0, toWet = 0.3) {
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), p = ac.createStereoPanner();
+  s.buffer = noiseBuf; f.type = type; f.frequency.value = freq; f.Q.value = q; p.pan.value = pan;
+  g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  s.connect(f); f.connect(g); g.connect(p); p.connect(master);
+  if (toWet) { const w = ac.createGain(); w.gain.value = toWet; p.connect(w); w.connect(wet); }
+  s.start(at, Math.random() * 1.5); s.stop(at + dur + 0.05);
+}
+function breathSnd(at, dur, vol, freq = 700) {      // slow-swelling breath
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), w = ac.createGain();
+  s.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.value = freq; f.Q.value = 0.6;
+  g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + dur * 0.4); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  w.gain.value = 0.4; s.connect(f); f.connect(g); g.connect(master); g.connect(w); w.connect(wet);
+  s.start(at, Math.random() * 1.5); s.stop(at + dur + 0.05);
+}
+function playEvent(e, a) {
+  switch (e.k) {
+    case 'walk': pawStep(a, e.near); break;
+    case 'gallop': noise(a, 0.2, 'lowpass', 150, 0.8, e.near ? 0.5 : 0.34, 0, 0.2); noise(a + 0.01, 0.08, 'bandpass', 2600, 1.2, 0.045, 0.1, 0.2); break;
+    case 'push': noise(a, 0.22, 'lowpass', 140, 0.8, 0.55, 0, 0.15); noise(a + 0.02, 0.1, 'bandpass', 2400, 1.1, 0.05, 0.1, 0.2); break;
+    case 'whoosh': noise(a, 0.6, 'bandpass', 900, 0.5, 0.06, 0.2, 0.5); break;
+    case 'land': noise(a, 0.24, 'lowpass', 160, 0.8, e.v, 0, 0.2); noise(a + 0.01, 0.1, 'bandpass', 2300, 1.2, 0.04, 0, 0.2); break;
+    case 'pant': breathSnd(a, 0.22, 0.035, 1600); break;
+    case 'huff': breathSnd(a, 0.9, 0.07, 1100); break;
+    case 'sigh': breathSnd(a, 2.2, 0.06, 600); break;
+    case 'breath': breathSnd(a, 1.5, 0.028, 700); break;
+  }
+}
+function pawStep(at, near) {
+  noise(at, 0.16, 'lowpass', 180, 0.8, near ? 0.32 : 0.2, 0, 0.15);   // soft pad thud
+  noise(at + 0.01, 0.07, 'bandpass', 2600, 1.2, near ? 0.025 : 0.015, 0.1, 0.2);   // leaf crunch
+}
+function chirp(at, freq, pan, vol) {
+  for (let i = 0; i < 3; i++) {
+    const o = ac.createOscillator(), g = ac.createGain(), p = ac.createStereoPanner();
+    o.frequency.value = freq; p.pan.value = pan;
+    const t0 = at + i * 0.045;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.03);
+    o.connect(g); g.connect(p); p.connect(master); p.connect(wet);
+    o.start(t0); o.stop(t0 + 0.04);
+  }
+}
+function owl(at) {
+  [0, 0.55, 0.8].forEach((d, i) => {
+    const o = ac.createOscillator(), g = ac.createGain(), p = ac.createStereoPanner();
+    o.type = 'sine'; o.frequency.setValueAtTime(390, at + d); o.frequency.linearRampToValueAtTime(360, at + d + 0.35);
+    p.pan.value = -0.6;
+    g.gain.setValueAtTime(0.0001, at + d); g.gain.exponentialRampToValueAtTime(i ? 0.03 : 0.04, at + d + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, at + d + (i ? 0.25 : 0.4));
+    o.connect(g); g.connect(p); p.connect(wet); p.connect(master);
+    o.start(at + d); o.stop(at + d + 0.5);
+  });
+}
+function pad(at, notes, len) {
+  notes.forEach(n => [-6, 6].forEach(det => {
+    const o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+    o.type = 'triangle'; o.frequency.value = mtof(n); o.detune.value = det;
+    f.type = 'lowpass'; f.frequency.value = 900;
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.018, at + 3); g.gain.linearRampToValueAtTime(0, at + len);
+    o.connect(f); f.connect(g); g.connect(master); g.connect(wet);
+    o.start(at); o.stop(at + len + 0.1);
+  }));
+}
+const CHORDS = [[45, 52, 57, 59, 64], [41, 48, 55, 57, 64], [43, 50, 55, 59, 62], [40, 47, 52, 55, 59]];
+function startBreeze() {
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), lfo = ac.createOscillator(), lg = ac.createGain();
+  s.buffer = noiseBuf; s.loop = true; f.type = 'bandpass'; f.frequency.value = 450; f.Q.value = 0.6;
+  g.gain.value = 0.03; lfo.frequency.value = 0.08; lg.gain.value = 0.02;
+  lfo.connect(lg); lg.connect(g.gain); s.connect(f); f.connect(g); g.connect(master); g.connect(wet);
+  s.start(); lfo.start();
+}
+// schedule everything a little ahead, timed exactly to the animation clock
+function schedule() {
+  if (!audioOn) return;
+  const tNow = (performance.now() - startTime) / 1000;
+  const until = tNow + 0.35;
+  const at = te => ac.currentTime + (te - tNow);
+  const between = (period, phase, fn) => {
+    for (let k = Math.ceil((schedUntil - phase) / period); k * period + phase < until; k++) {
+      const te = k * period + phase; if (te >= schedUntil && te >= tNow - 0.01) fn(te);
+    }
+  };
+  // gait, leaps and rest sounds come from the story's event list, timed exactly to the animation
+  const k0 = Math.max(0, Math.floor(schedUntil / STORY)), k1 = Math.floor(until / STORY);
+  for (let k = k0; k <= k1; k++) for (const e of EVENTS) {
+    const te = k * STORY + e.t;
+    if (te >= schedUntil && te < until && te >= tNow - 0.01) playEvent(e, at(te));
+  }
+  between(9, 0, te => pad(at(te), CHORDS[Math.round(te / 9) % 4], 12));
+  between(0.83, 0.2, te => chirp(at(te), 4700, -0.5, 0.012));
+  between(1.07, 0.5, te => chirp(at(te), 5200, 0.55, 0.009));
+  
+  schedUntil = until;
+}
+const overlay = document.getElementById('overlay');
+function begin() {
+  if (audioOn) return;
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ac.createDynamicsCompressor(); comp.connect(ac.destination);
+    master = ac.createGain(); master.gain.setValueAtTime(0, ac.currentTime); master.gain.linearRampToValueAtTime(0.9, ac.currentTime + 2.5); master.connect(comp);
+    wet = ac.createGain(); wet.gain.value = 0.5; const rv = makeReverb(); wet.connect(rv); rv.connect(master);
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    startBreeze();
+    startTime = performance.now(); schedUntil = 0; audioOn = true;
+    setInterval(schedule, 60); schedule();
+  } catch (e) {}
+  overlay.classList.add('hidden');
+}
+overlay.addEventListener('click', begin);
+overlay.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); begin(); } });
+// ---- capture hooks (used only by the frame renderer; the live page does not need them) ----
+window.DUR = STORY;
+window.READY = true;
+window.cap = i => { window.CAPTURING = true; frame(startTime + (i / 30) * 1000); return canvas.toDataURL('image/jpeg', 0.93).slice(23); };
+window.contact = (times, cols, scale) => {
+  window.CAPTURING = true;
+  const tw = Math.round(W * scale), th = Math.round(H * scale), rows = Math.ceil(times.length / cols);
+  const sh = document.createElement('canvas'); sh.width = tw * cols; sh.height = th * rows; const s = sh.getContext('2d');
+  times.forEach((tt, i) => {
+    frame(startTime + tt * 1000);
+    const X = (i % cols) * tw, Y = Math.floor(i / cols) * th;
+    s.drawImage(canvas, 0, 0, W, H, X, Y, tw, th); s.fillStyle = '#fff'; s.font = 'bold 15px sans-serif'; s.fillText('t=' + tt, X + 8, Y + 20);
+  });
+  return sh.toDataURL('image/png').slice(22);
+};
+window.renderAudioWav = async () => {
+  const sr = 44100, dur = STORY, off = new OfflineAudioContext(2, Math.ceil(sr * dur), sr);
+  ac = off; master = off.createGain(); master.gain.value = 0.9;
+  const comp = off.createDynamicsCompressor(); comp.connect(off.destination); master.connect(comp);
+  wet = off.createGain(); wet.gain.value = 0.4;
+  const rv = off.createConvolver(), rb = off.createBuffer(2, sr * 2.5, sr);
+  for (let c = 0; c < 2; c++) { const d = rb.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3); }
+  rv.buffer = rb; wet.connect(rv); rv.connect(master);
+  noiseBuf = off.createBuffer(1, sr * 2, sr); const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  for (const e of EVENTS) if (e.t < dur - 0.5) { try { playEvent(e, e.t); } catch (err) {} }
+  for (let t = 0; t < dur - 1; t += 9) pad(t, CHORDS[Math.round(t / 9) % 4], 12);
+  for (let t = 0.2; t < dur - 1; t += 0.9) chirp(t, 4700, -0.5, 0.012);
+  const buf = await off.startRendering();
+  let pk = 0; for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i])); }
+  const k = pk > 0 ? 0.89 / pk : 1;
+  for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] *= k; }
+  const n = buf.length, bytes = new Uint8Array(44 + n * 4), dv = new DataView(bytes.buffer), w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); w(8, 'WAVEfmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true);
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 4, true);
+  const d0 = buf.getChannelData(0), d1 = buf.getChannelData(1);
+  for (let i = 0, o = 44; i < n; i++, o += 4) { dv.setInt16(o, Math.round(Math.max(-1, Math.min(1, d0[i])) * 32767), true); dv.setInt16(o + 2, Math.round(Math.max(-1, Math.min(1, d1[i])) * 32767), true); }
+  let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+</script>

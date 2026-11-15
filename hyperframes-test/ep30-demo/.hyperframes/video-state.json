@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "historyId": "db35ab88-2817-4c49-946d-256dfbfe0e23",
+  "currentRevision": null,
+  "pendingChanges": false,
+  "files": {
+    "build.cjs": {
+      "hash": "70f1d7946b732e9a4eed8a24018a0261e5147cad6e87d0e96e416c49a7388353",
+      "content": "C:\\Users\\Jamal\\.cache\\hyperframes\\history\\db35ab88-2817-4c49-946d-256dfbfe0e23\\blobs\\70\\70f1d7946b732e9a4eed8a24018a0261e5147cad6e87d0e96e416c49a7388353"
+    },
+    "episode.js": {
+      "hash": "dcbca9faa2d2ada57413486a197274c157b0615c11837beac5a4e5497c022d4b",
+      "content": "C:\\Users\\Jamal\\.cache\\hyperframes\\history\\db35ab88-2817-4c49-946d-256dfbfe0e23\\blobs\\dc\\dcbca9faa2d2ada57413486a197274c157b0615c11837beac5a4e5497c022d4b"
+    },
+    "hyperframes.json": {
+      "hash": "53dbce1e19aa713cbb12ee0bc4d206143b45ab15e6ffbfcaa8f69572d4d24d50",
+      "content": "C:\\Users\\Jamal\\.cache\\hyperframes\\history\\db35ab88-2817-4c49-946d-256dfbfe0e23\\blobs\\53\\53dbce1e19aa713cbb12ee0bc4d206143b45ab15e6ffbfcaa8f69572d4d24d50"
+    },
+    "index.html": {
+      "hash": "6926845d54094f4570b067f71d51142a54ca63e8677421b1f12ed0a3e9fdaa95",
+      "content": "C:\\Users\\Jamal\\.cache\\hyperframes\\history\\db35ab88-2817-4c49-946d-256dfbfe0e23\\blobs\\69\\6926845d54094f4570b067f71d51142a54ca63e8677421b1f12ed0a3e9fdaa95"
+    },
+    "meta.json": {
+      "hash": "e5603be1c6f826e4f5c75eb56b72ec087dbcb8c50bcac6514bae0d503fb6c290",
+      "content": "C:\\Users\\Jamal\\.cache\\hyperframes\\history\\db35ab88-2817-4c49-946d-256dfbfe0e23\\blobs\\e5\\e5603be1c6f826e4f5c75eb56b72ec087dbcb8c50bcac6514bae0d503fb6c290"
+    },
+    "assets/ep30-score.wav": {
+      "hash": "3184020870377171796447f74e4163448c1a3afce4f6bf4ee0160fd29a74917f",
+      "content": "C:\\Users\\Jamal\\.cache\\hyperframes\\history\\db35ab88-2817-4c49-946d-256dfbfe0e23\\blobs\\31\\3184020870377171796447f74e4163448c1a3afce4f6bf4ee0160fd29a74917f"
+    }
+  },
+  "revisions": {},
+  "checks": {
+    "latest": null,
+    "revisions": {},
+    "unversioned": []
+  },
+  "snapshots": {
+    "latest": {
+      "revision": null,
+      "id": "2affcf03-188e-4052-bcf2-57173ec49c06-6"
+    },
+    "revisions": {},
+    "unversioned": [
+      {
+        "scope": "full",
+        "id": "2affcf03-188e-4052-bcf2-57173ec49c06-0",
+        "image": "C:\\Users\\Jamal\\AppData\\Local\\Temp\\claude\\ada2e2bca23dd2d7\\6f29a7a8-0a85-441b-896a-67660ebdd1d9\\scratchpad\\snap\\frame-00-at-0.2s.png",
+        "time": 0.2,
+        "metadata": {
+          "width": 1080,
+          "height": 1920,
+          "zoomScale": 1,
+          "browserGpuMode": "auto",
+          "warnings": [],
+          "partial": false
+        },
+        "createdAt": 1794550757506,
+        "contentHash": "eff2c45a22f90482db33e816a0c49bd09d74c281f914398d57008097f9104bda",
+        "revision": null,
+        "inputFingerprint": "c129d1102a5590c10ad390f6f1bf30eb80df7309e1c40827579a91bfa4e640d5",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      },
+      {
+        "scope": "full",
+        "id": "2affcf03-188e-4052-bcf2-57173ec49c06-1",
+        "image": "C:\\Users\\Jamal\\AppData\\Local\\Temp\\claude\\ada2e2bca23dd2d7\\6f29a7a8-0a85-441b-896a-67660ebdd1d9\\scratchpad\\snap\\frame-01-at-1.5s.png",
+        "time": 1.5,
+        "metadata": {
+          "width": 1080,
+          "height": 1920,
+          "zoomScale": 1,
+          "browserGpuMode": "auto",
+          "warnings": [],
+          "partial": false
+        },
+        "createdAt": 1794550757506,
+        "contentHash": "b8ab2f477ce1eccdf4ca4bb5639f79ceb2cf07685f6e6d783de950280a7e6b38",
+        "revision": null,
+        "inputFingerprint": "c129d1102a5590c10ad390f6f1bf30eb80df7309e1c40827579a91bfa4e640d5",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      },
+      {
+        "scope": "full",
+        "id": "2affcf03-188e-4052-bcf2-57173ec49c06-2",
+        "image": "C:\\Users\\Jamal\\AppData\\Local\\Temp\\claude\\ada2e2bca23dd2d7\\6f29a7a8-0a85-441b-896a-67660ebdd1d9\\scratchpad\\snap\\frame-02-at-3s.png",
+        "time": 3,
+        "metadata": {
+          "width": 1080,
+          "height": 1920,
+          "zoomScale": 1,
+          "browserGpuMode": "auto",
+          "warnings": [],
+          "partial": false
+        },
+        "createdAt": 1794550757506,
+        "contentHash": "2a96730d92b2bdfb65b71d66ea4828709796fc927f440c46d921de66b5ffb8e7",
+        "revision": null,
+        "inputFingerprint": "c129d1102a5590c10ad390f6f1bf30eb80df7309e1c40827579a91bfa4e640d5",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      },
+      {
+        "scope": "full",
+        "id": "2affcf03-188e-4052-bcf2-57173ec49c06-3",
+        "image": "C:\\Users\\Jamal\\AppData\\Local\\Temp\\claude\\ada2e2bca23dd2d7\\6f29a7a8-0a85-441b-896a-67660ebdd1d9\\scratchpad\\snap\\frame-03-at-4.5s.png",
+        "time": 4.5,
+        "metadata": {
+          "width": 1080,
+          "height": 1920,
+          "zoomScale": 1,
+          "browserGpuMode": "auto",
+          "warnings": [],
+          "partial": false
+        },
+        "createdAt": 1794550757506,
+        "contentHash": "2e7d01455b03fd1870df72f91580c344498afa166b1d7f6d87db2ee22a0ed54e",
+        "revision": null,
+        "inputFingerprint": "c129d1102a5590c10ad390f6f1bf30eb80df7309e1c40827579a91bfa4e640d5",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      },
+      {
+        "scope": "full",
+        "id": "2affcf03-188e-4052-bcf2-57173ec49c06-4",
+        "image": "C:\\Users\\Jamal\\AppData\\Local\\Temp\\claude\\ada2e2bca23dd2d7\\6f29a7a8-0a85-441b-896a-67660ebdd1d9\\scratchpad\\snap\\frame-04-at-8s.png",
+        "time": 8,
+        "metadata": {
+          "width": 1080,
+          "height": 1920,
+          "zoomScale": 1,
+          "browserGpuMode": "auto",
+          "warnings": [],
+          "partial": false
+        },
+        "createdAt": 1794550757506,
+        "contentHash": "16772bb2cacdfb5d61eaf9d156ca5e1434309f92d9f75bbc1817b6e854c76a15",
+        "revision": null,
+        "inputFingerprint": "c129d1102a5590c10ad390f6f1bf30eb80df7309e1c40827579a91bfa4e640d5",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      },
+      {
+        "scope": "full",
+        "id": "2affcf03-188e-4052-bcf2-57173ec49c06-5",
+        "image": "C:\\Users\\Jamal\\AppData\\Local\\Temp\\claude\\ada2e2bca23dd2d7\\6f29a7a8-0a85-441b-896a-67660ebdd1d9\\scratchpad\\snap\\frame-05-at-26s.png",
+        "time": 26,
+        "metadata": {
+          "width": 1080,
+          "height": 1920,
+          "zoomScale": 1,
+          "browserGpuMode": "auto",
+          "warnings": [],
+          "partial": false
+        },
+        "createdAt": 1794550757506,
+        "contentHash": "7cdb22b8e3f5d3f374722940de4df706156f05403e9d8f68ba237662a652311a",
+        "revision": null,
+        "inputFingerprint": "c129d1102a5590c10ad390f6f1bf30eb80df7309e1c40827579a91bfa4e640d5",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      },
+      {
+        "scope": "full",
+        "id": "2affcf03-188e-4052-bcf2-57173ec49c06-6",
+        "image": "C:\\Users\\Jamal\\AppData\\Local\\Temp\\claude\\ada2e2bca23dd2d7\\6f29a7a8-0a85-441b-896a-67660ebdd1d9\\scratchpad\\snap\\frame-06-at-27.8s.png",
+        "time": 27.8,
+        "metadata": {
+          "width": 1080,
+          "height": 1920,
+          "zoomScale": 1,
+          "browserGpuMode": "auto",
+          "warnings": [],
+          "partial": false
+        },
+        "createdAt": 1794550757506,
+        "contentHash": "a33aa54638fb291647f3176f571a97709a5cc376136c4f2bfe42b90f4a10408b",
+        "revision": null,
+        "inputFingerprint": "c129d1102a5590c10ad390f6f1bf30eb80df7309e1c40827579a91bfa4e640d5",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      }
+    ]
+  },
+  "renders": {
+    "latest": {
+      "id": "89955d3e-e32c-439a-905d-c6852b53d916",
+      "completedAt": 1794551769768,
+      "output": "C:\\Users\\Jamal\\HHanimation\\hyperframes-test\\ep30-demo\\renders\\ep30-hyperframes-short.mp4",
+      "status": "completed",
+      "revision": null
+    },
+    "retainedRevisions": []
+  },
+  "pendingArtifactCleanup": []
+}

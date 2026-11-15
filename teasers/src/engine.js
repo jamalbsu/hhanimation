@@ -1,0 +1,530 @@
+/* PANTHERA TEASER ENGINE — the reusable cartoon template.
+   A page = this engine + one teaser file (which defines T) + boot(). teasers/build.js glues them together.
+   A teaser file describes: the panther's drawing style, the shots (camera + action), the world layers,
+   text overlays, post effects and the music. Everything else (the panther rig, camera, parallax,
+   style painters, post effects, synth, capture API used by tools/capf.js) lives here. */
+'use strict';
+var DUR = 15, FPS = 30;
+const QS = new URLSearchParams(location.search), CAPTURE = QS.get('capture') === '1';
+const TAU = Math.PI * 2;
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x, lerp = (a, b, u) => a + (b - a) * u;
+const sm = u => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
+const eOut = u => 1 - Math.pow(1 - clamp(u, 0, 1), 3), eIn = u => Math.pow(clamp(u, 0, 1), 3);
+const hash = (a, b = 0) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
+const band = (t, a, b, fi = 0.25, fo = 0.25) => sm((t - a) / fi) * (1 - sm((t - b + fo) / fo));
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+
+// ---------------------------------------------------------------- canvas
+const cv = document.getElementById('cv'), X = cv.getContext('2d');
+let W = 1080, H = 1920, U = 1.92, VW = 562.5, AZ = 1, LS = 1, BUFS = {};   // LS: text scale-up for landscape
+function setSize(w, h) { W = cv.width = w; H = cv.height = h; U = H / 1000; VW = W / U; AZ = W > H ? 1.3 : 1; LS = W > H ? 1.5 : 1; BUFS = {}; }
+function buf(name, w, h, init) {
+  const k = name + ':' + Math.round(w) + 'x' + Math.round(h);
+  if (!BUFS[k]) { BUFS[k] = mk(w, h); if (init) init(BUFS[k].getContext('2d'), BUFS[k].width, BUFS[k].height); }
+  return BUFS[k];
+}
+const screenTf = c => c.setTransform(U, 0, 0, U, W / 2, 0);     // overlay space: x in [-VW/2, VW/2], y in [0, 1000]
+
+// ---------------------------------------------------------------- shots, distance and gait
+let Dtab, PHtab; const DT = 1 / 240;
+const SC = () => T.scale || 0.75;
+function shotIdx(t) { for (let i = 0; i < T.shots.length; i++) if (t < T.shots[i].t[1]) return i; return T.shots.length - 1; }
+function speedAt(t) {
+  const i = shotIdx(t), s = T.shots[i], prev = T.shots[i - 1], v = s.spd || 0;
+  if (!prev || s.snap) return v;
+  return lerp(prev.spd || 0, v, sm((t - s.t[0]) / (s.ease || 0.35)));
+}
+function precompute() {
+  const n = Math.ceil((DUR + 1) / DT); Dtab = new Float64Array(n + 1); PHtab = new Float64Array(n + 1);
+  let d = 0, ph = 0;
+  for (let i = 0; i <= n; i++) {
+    Dtab[i] = d; PHtab[i] = ph; const v = speedAt(i * DT);
+    d += v * DT; ph += clamp(v / (260 * SC()), 0, T.maxCadence || 3.1) * DT;
+  }
+}
+const tabAt = (tab, t) => tab[clamp(Math.round(t / DT), 0, tab.length - 1)];
+const Dat = t => tabAt(Dtab, t), PHat = t => tabAt(PHtab, t);
+function val(v, u, d) { return v === undefined ? d : Array.isArray(v) ? lerp(v[0], v[1], sm(u)) : v; }
+function pxAt(t) { const s = T.shots[shotIdx(t)]; return val(s.px, (t - s.t[0]) / (s.t[1] - s.t[0]), 0); }
+const panXAt = t => Dat(t) + pxAt(t);       // the panther's world x at time t
+
+// ---------------------------------------------------------------- the panther rig (side view, faces +x, ground at y = 0)
+function smooth(p, pts) {                    // closed Catmull-Rom through points
+  const n = pts.length; p.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < n; i++) {
+    const a = pts[(i - 1 + n) % n], b = pts[i], c = pts[(i + 1) % n], d = pts[(i + 2) % n];
+    p.bezierCurveTo(b[0] + (c[0] - a[0]) / 6, b[1] + (c[1] - a[1]) / 6, c[0] - (d[0] - b[0]) / 6, c[1] - (d[1] - b[1]) / 6, c[0], c[1]);
+  }
+  p.closePath(); return p;
+}
+function ell(p, cx, cy, rx, ry, rot = 0) { p.moveTo(cx + rx * Math.cos(rot), cy + rx * Math.sin(rot)); p.ellipse(cx, cy, rx, ry, rot, 0, TAU); p.closePath(); }
+function taper(p, ax, ay, ar, bx, by, br) {  // a limb segment: round at both ends, width ar → br
+  const th = Math.atan2(by - ay, bx - ax), nx = Math.cos(th - Math.PI / 2), ny = Math.sin(th - Math.PI / 2);
+  p.moveTo(ax + nx * ar, ay + ny * ar); p.lineTo(bx + nx * br, by + ny * br);
+  p.arc(bx, by, br, th - Math.PI / 2, th + Math.PI / 2);
+  p.lineTo(ax - nx * ar, ay - ny * ar); p.arc(ax, ay, ar, th + Math.PI / 2, th + Math.PI * 1.5); p.closePath();
+}
+function ik(A, F, l1, l2) {                   // two-bone leg; the joint bends backward (−x)
+  let dx = F[0] - A[0], dy = F[1] - A[1], d = Math.hypot(dx, dy); const m = (l1 + l2) * 0.995;
+  if (d > m) { dx *= m / d; dy *= m / d; d = m; }
+  const a = Math.atan2(dy, dx), b = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1)), g = a + b;
+  return [[A[0] + l1 * Math.cos(g), A[1] + l1 * Math.sin(g)], [A[0] + dx, A[1] + dy]];
+}
+function limb(root, foot, l1, l2, w0, w1, w2) {
+  const [j, f] = ik(root, foot, l1, l2), p = new Path2D();
+  taper(p, root[0], root[1], w0, j[0], j[1], w1); taper(p, j[0], j[1], w1, f[0], f[1], w2);
+  ell(p, f[0] + 7, f[1] - w2 * 0.7, w2 + 7, w2 * 0.8); return p;
+}
+function tailPath(root, th0, curv, len, w0, w1) {
+  const N = 16, step = len / N, c = []; let x = root[0], y = root[1], th = th0;
+  for (let i = 0; i <= N; i++) { const s = i / N; c.push([x, y, th, lerp(w0, w1, s)]); th += curv(s) * step; x += Math.cos(th) * step; y += Math.sin(th) * step; }
+  const L = c.map(([x, y, th, w]) => [x - Math.sin(th) * w, y + Math.cos(th) * w]), R = c.map(([x, y, th, w]) => [x + Math.sin(th) * w, y - Math.cos(th) * w]);
+  const p = new Path2D(); p.moveTo(L[0][0], L[0][1]); for (const q of L) p.lineTo(q[0], q[1]);
+  const e = c[N]; p.arc(e[0], e[1], e[3], e[2] + Math.PI / 2, e[2] - Math.PI / 2, true);
+  for (let i = N; i >= 0; i--) p.lineTo(R[i][0], R[i][1]); p.closePath(); return p;
+}
+const HEAD_PTS = [[-26, -4], [-20, -26], [-4, -37], [16, -36], [32, -29], [45, -18], [55, -9], [59, 0], [54, 10], [38, 16], [16, 19], [-6, 17], [-22, 8]];
+const EAR_N = [[-14, -27], [-11, -52], [-5, -60], [3, -55], [12, -33]], EAR_F = [[2, -33], [7, -55], [13, -60], [19, -52], [24, -31]];
+
+function buildPanther(o) {
+  const ph = o.ph; let hip, sh, feet, ha = 0, hb = 0, tail;
+  if (o.mode === 'stand') {
+    const br = Math.sin(o.t * 2.6) * 2;
+    hip = [-88, -102]; sh = [80, -110 - br];
+    feet = { hn: [-80, 0], hf: [-98, 0], fn: [94, 0], ff: [78, 0] };
+    ha = -0.05 + Math.sin(o.t * 1.3) * 0.03; hb = -br;
+    tail = tailPath([hip[0] - 30, hip[1] - 10], Math.PI / 2 + 0.55, s => 0.002 + 0.011 * s + 0.004 * Math.sin(o.t * 2 - s * 3), 150, 12, 7);
+  } else if (o.mode === 'leap') {
+    const u = o.lu; hip = [-106, -104]; sh = [98, -112];
+    feet = { fn: [sh[0] + lerp(118, 70, u), sh[1] + lerp(40, 104, u)], ff: [sh[0] + lerp(100, 54, u), sh[1] + lerp(56, 108, u)],
+             hn: [hip[0] + lerp(-112, -40, u), hip[1] + lerp(64, 102, u)], hf: [hip[0] + lerp(-98, -26, u), hip[1] + lerp(78, 104, u)] };
+    ha = lerp(-0.14, 0.12, u);
+    tail = tailPath([hip[0] - 30, hip[1] - 12], Math.PI - 0.05, s => 0.0015 + 0.006 * Math.sin(u * 3 - s * 4), 160, 12, 7);
+  } else {
+    const f = Math.cos(TAU * ph);
+    hip = [-92 - 10 * f, -106 + 5 * Math.sin(TAU * ph * 2)]; sh = [80 + 10 * f, -110 + 5 * Math.sin(TAU * (ph * 2 + 0.25))];
+    const foot = (base, R, Hs, off) => { const a = TAU * (ph + off), s = Math.sin(a); return [base - R * Math.cos(a), s > 0 ? -Hs * s : 0]; };
+    feet = { hn: foot(hip[0] - 4, 64, 52, 0), hf: foot(hip[0] - 4, 64, 52, 0.09), fn: foot(sh[0] + 12, 68, 60, 0.5), ff: foot(sh[0] + 12, 68, 60, 0.59) };
+    ha = 0.05 * Math.sin(TAU * ph * 2); hb = 4 * Math.sin(TAU * (ph * 2 + 0.5));
+    tail = tailPath([hip[0] - 30, hip[1] - 12], Math.PI - 0.22, s => 0.002 + 0.006 * s + 0.009 * Math.sin(TAU * (ph - s * 0.8)), 150, 12, 7);
+  }
+  const far = [], main = [], near = [];
+  far.push(limb([hip[0] - 8, hip[1] + 2], feet.hf, 64, 68, 20, 11, 9), limb([sh[0] - 2, sh[1] + 6], feet.ff, 60, 64, 17, 11, 9));
+  const mx = (hip[0] + sh[0]) / 2, my = (hip[1] + sh[1]) / 2;
+  const body = smooth(new Path2D(), [[hip[0] - 34, hip[1] - 4], [hip[0] - 14, hip[1] - 30], [mx, my - 24], [sh[0] - 8, sh[1] - 34], [sh[0] + 30, sh[1] - 52 + hb],
+    [sh[0] + 54, sh[1] - 14 + hb], [sh[0] + 34, sh[1] + 30], [sh[0] - 16, sh[1] + 40], [mx, my + 30], [hip[0] + 32, hip[1] + 36], [hip[0] - 6, hip[1] + 42], [hip[0] - 36, hip[1] + 18]]);
+  const HA = [sh[0] + 58, sh[1] - 50 + hb], HM = new DOMMatrix().translate(HA[0], HA[1]).rotate(ha * 57.2958).scale(1.15);
+  const add = (arr, p) => { const q = new Path2D(); q.addPath(p, HM); arr.push(q); };
+  main.push(tail, body);
+  add(main, smooth(new Path2D(), EAR_F));
+  add(main, smooth(new Path2D(), HEAD_PTS));
+  add(main, smooth(new Path2D(), EAR_N));
+  const J = o.jaw || 0;
+  if (J > 0.02) add(main, smooth(new Path2D(), [[52, 6], [26, 12], [16, 16 + 6 * J], [32, 22 + 16 * J], [54, 12 + 24 * J]]));
+  const hz = new Path2D(); ell(hz, hip[0] - 2, hip[1] + 6, 44, 48, -0.25); near.push(hz);
+  near.push(limb([hip[0], hip[1] + 8], feet.hn, 64, 68, 24, 12, 10));
+  const sz = new Path2D(); ell(sz, sh[0] + 6, sh[1] + 8, 30, 42, 0.2); near.push(sz);
+  near.push(limb([sh[0] + 6, sh[1] + 10], feet.fn, 60, 64, 20, 12, 10));
+  // where the head is in the world (for head close-ups)
+  const s = o.s, cr = Math.cos(o.rot), sr = Math.sin(o.rot), hc = HM.transformPoint(new DOMPoint(18, -10));
+  const head = [o.x + s * (hc.x * cr - hc.y * sr), o.y - o.lift + s * (hc.x * sr + hc.y * cr)];
+  return { far, main, near, HM, hip, sh, mx, my, J, head, o };
+}
+
+// ---------------------------------------------------------------- panther painters (the drawing styles)
+function paintSet(c, paths, S, col, k, line) {
+  switch (S.mode) {
+    case 'neon': {
+      c.lineJoin = 'round'; c.strokeStyle = line; c.lineWidth = S.ow * 2;
+      c.shadowColor = line; c.shadowBlur = S.glow * k; for (const p of paths) c.stroke(p); c.shadowBlur = 0;
+      c.fillStyle = col; for (const p of paths) c.fill(p); break;
+    }
+    case 'cel': {
+      c.lineJoin = 'round'; c.strokeStyle = S.ink; c.lineWidth = S.ow * 2; for (const p of paths) c.stroke(p);
+      c.fillStyle = col; for (const p of paths) c.fill(p); break;
+    }
+    case 'ink': {
+      c.fillStyle = col; for (const p of paths) c.fill(p);
+      c.save(); c.globalAlpha *= 0.3; c.strokeStyle = col; c.lineWidth = 4; c.lineJoin = 'round';
+      const j = S.jit || 0; c.translate(j, -j * 0.6); for (const p of paths) c.stroke(p); c.restore(); break;
+    }
+    case 'paper': {
+      c.save(); c.shadowColor = 'rgba(30,20,10,.38)'; c.shadowOffsetX = 4 * k; c.shadowOffsetY = 5 * k; c.shadowBlur = 7 * k;
+      c.fillStyle = col; for (const p of paths) c.fill(p); c.restore();
+      c.strokeStyle = 'rgba(255,255,255,.10)'; c.lineWidth = 1.6; for (const p of paths) c.stroke(p); break;
+    }
+    case 'chalk': {                      // chalk on a blackboard: hatched shading inside, a rough doubled outline
+      c.lineJoin = 'round'; c.lineCap = 'round'; const j = S.jit || 0;
+      for (const p of paths) { c.fillStyle = S.board; c.fill(p); c.save(); c.clip(p); c.strokeStyle = col; c.globalAlpha *= S.hatchA || 0.3; c.lineWidth = 2.2; c.beginPath();
+        for (let x = -760; x < 520; x += 9) { c.moveTo(x + j * 2, 70); c.lineTo(x + 340 + j * 2, -340); } c.stroke(); c.restore(); }
+      c.strokeStyle = line;
+      for (const [dx, dy, a, w] of [[0, 0, 0.95, S.ow], [1.4, -1.1, 0.45, S.ow * 0.7]]) { c.save(); c.globalAlpha *= a; c.lineWidth = w; c.translate(dx + j * 0.5, dy - j * 0.4); for (const p of paths) c.stroke(p); c.restore(); }
+      break;
+    }
+    case 'wash': {                       // watercolour: a diluted gradient wash, with pigment pooled along the edges
+      const g = c.createLinearGradient(-260, -230, 200, 20); g.addColorStop(0, S.w0 || col); g.addColorStop(0.55, col); g.addColorStop(1, S.w1 || col);
+      c.save(); c.globalAlpha *= S.dilute || 0.86; c.fillStyle = g; for (const p of paths) c.fill(p); c.restore();
+      c.save(); c.globalAlpha *= 0.5; c.strokeStyle = S.edge || col; c.lineWidth = 2.6; c.lineJoin = 'round'; const j = (S.jit || 0) * 0.4; c.translate(j, -j * 0.7); for (const p of paths) c.stroke(p); c.restore(); break;
+    }
+    default: { c.fillStyle = col; for (const p of paths) c.fill(p); }   // 'sil' — a pure silhouette
+  }
+}
+function drawEye(c, S, P) {
+  const eye = new Path2D(); eye.moveTo(12, -11); eye.bezierCurveTo(15, -26, 31, -29, 39, -17); eye.bezierCurveTo(35, -6, 22, -3, 12, -11); eye.closePath();
+  const blink = P.o.blink || 0;
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  if (S.mode === 'sil' || S.mode === 'neon') {
+    c.save(); c.shadowColor = S.eye; c.shadowBlur = 18 * P.k; c.fillStyle = S.eye;
+    if (blink > 0.5) { c.strokeStyle = S.eye; c.lineWidth = 2.5; c.beginPath(); c.moveTo(12, -12); c.quadraticCurveTo(26, -6, 39, -15); c.stroke(); c.restore(); return; }
+    c.fill(eye); c.shadowBlur = 0; c.fillStyle = '#fff'; c.beginPath(); c.arc(25, -19, 2.6, 0, TAU); c.fill();
+    c.fillStyle = S.mode === 'sil' ? '#000' : S.fill; c.beginPath(); c.ellipse(28.5, -15, 2, 7.5, 0, 0, TAU); c.fill(); c.restore();
+    if (S.mode === 'neon') { c.strokeStyle = S.line; c.lineWidth = 2; c.beginPath(); c.moveTo(11, -10); c.bezierCurveTo(15, -26, 31, -29, 40, -17); c.stroke(); }
+    return;
+  }
+  if (blink > 0.5) { c.strokeStyle = S.ink; c.lineWidth = 3; c.beginPath(); c.moveTo(12, -12); c.quadraticCurveTo(26, -6, 39, -15); c.stroke(); return; }
+  c.fillStyle = S.white || '#fffaf0'; c.fill(eye);
+  c.save(); c.clip(eye);
+  const g = c.createLinearGradient(0, -26, 0, -5); g.addColorStop(0, S.irisHi || '#5a3a00'); g.addColorStop(1, S.eye); c.fillStyle = g;
+  c.beginPath(); c.ellipse(28, -15, 7.5, 10.5, 0, 0, TAU); c.fill();
+  c.fillStyle = '#0b0710'; c.beginPath(); c.ellipse(28.5, -15, 2.4, 7.5, 0, 0, TAU); c.fill();
+  c.fillStyle = 'rgba(0,0,0,.28)'; c.fillRect(0, -32, 60, 9);
+  c.fillStyle = '#fff'; c.beginPath(); c.arc(25, -19.5, 3.4, 0, TAU); c.fill(); c.beginPath(); c.arc(31.5, -10, 1.5, 0, TAU); c.fill();
+  if (P.o.sparkle) { const a = P.o.sparkle; c.globalAlpha = a; c.beginPath(); for (let i = 0; i < 8; i++) { const r = i % 2 ? 1.2 : 6 * a; c.lineTo(25 + Math.cos(i * Math.PI / 4) * r, -19.5 + Math.sin(i * Math.PI / 4) * r); } c.fill(); c.globalAlpha = 1; }
+  c.restore();
+  c.strokeStyle = S.ink; c.lineWidth = 3.6; c.beginPath(); c.moveTo(11, -10); c.bezierCurveTo(15, -26, 31, -29, 40, -17); c.stroke();
+  c.lineWidth = 2.6; c.beginPath(); c.moveTo(13, -14); c.lineTo(5, -19.5); c.stroke();
+  c.lineWidth = 1.3; c.beginPath(); c.moveTo(15, -7); c.quadraticCurveTo(25, -3, 36, -9); c.stroke();
+}
+function drawDetails(c, P, S) {
+  const { hip, sh, mx, my, J } = P;
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  if (S.hi && S.mode !== 'sil') {                     // the light running along the back
+    c.save(); c.strokeStyle = S.hi; c.lineWidth = S.mode === 'neon' ? 2 : 5;
+    if (S.mode === 'neon') { c.shadowColor = S.hi; c.shadowBlur = 8 * P.k; }
+    c.beginPath(); c.moveTo(hip[0] - 12, hip[1] - 20); c.quadraticCurveTo(mx, my - 22, sh[0] - 4, sh[1] - 26); c.stroke(); c.restore();
+  }
+  if (S.collar) {                                     // golden collar (Bastet)
+    c.save(); c.strokeStyle = S.collar; c.lineWidth = 9; c.beginPath(); c.moveTo(sh[0] + 22, sh[1] - 46); c.quadraticCurveTo(sh[0] + 46, sh[1] - 34, sh[0] + 48, sh[1] - 4); c.stroke();
+    c.strokeStyle = '#000'; c.lineWidth = 2; for (let i = 0; i < 5; i++) { const u = i / 4, x = lerp(sh[0] + 25, sh[0] + 47, u), y = lerp(sh[1] - 44, sh[1] - 6, u); c.beginPath(); c.moveTo(x - 4, y); c.lineTo(x + 4, y + 2); c.stroke(); }
+    c.fillStyle = S.gem || '#2ec4ff'; c.beginPath(); c.arc(sh[0] + 49, sh[1] + 6, 5, 0, TAU); c.fill(); c.restore();
+  }
+  c.save(); const M = P.HM; c.transform(M.a, M.b, M.c, M.d, M.e, M.f);
+  if (S.mode !== 'sil') {
+    if (S.earIn) { c.fillStyle = S.earIn; c.fill(smooth(new Path2D(), [[-9, -31], [-7, -49], [-2, -53], [6, -34]])); }
+    if (J > 0.02) {
+      c.fillStyle = S.mouth || '#3a0b14'; c.beginPath(); c.moveTo(57, 3); c.lineTo(28, 12); c.lineTo(52, 9 + 22 * J); c.closePath(); c.fill();
+      c.fillStyle = '#fffaf0'; c.beginPath(); c.moveTo(47, 4); c.lineTo(52, 4); c.lineTo(49.5, 5 + 9 * J); c.fill();
+      c.beginPath(); c.moveTo(45, 10 + 20 * J); c.lineTo(50, 10 + 21 * J); c.lineTo(47, 4 + 15 * J); c.fill();
+    }
+    const nose = S.nose || S.ink || '#111';
+    c.fillStyle = S.mode === 'neon' ? S.line : nose; c.fill(smooth(new Path2D(), [[52, -7], [59, -4], [57, 1], [52, 0]]));
+    const wl = S.whisk || (S.mode === 'neon' ? S.line : 'rgba(235,230,240,.75)');
+    c.strokeStyle = S.mode === 'ink' ? S.ink : nose; c.lineWidth = 1.6;
+    if (J < 0.1) { c.beginPath(); c.moveTo(57, 4); c.quadraticCurveTo(55, 9, 48, 9); c.stroke(); }
+    c.strokeStyle = wl; c.lineWidth = S.mode === 'neon' ? 1.2 : 1.4;
+    for (const [a, b, d] of [[4, -6, 0], [7, 5, 1], [10, 15, 2]]) { c.beginPath(); c.moveTo(46, a); c.quadraticCurveTo(64, a + (b - a) * 0.3 - 1, 80 - d * 2, b); c.stroke(); }
+    if (S.blush) {
+      c.fillStyle = 'rgba(255,110,150,.42)'; c.beginPath(); c.ellipse(24, 1, 8, 3.6, 0, 0, TAU); c.fill();
+      c.strokeStyle = 'rgba(255,90,130,.75)'; c.lineWidth = 1.1; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(19 + i * 4, 3); c.lineTo(22 + i * 4, -1); c.stroke(); }
+    }
+    if (S.mode !== 'neon') { c.strokeStyle = S.ink; c.lineWidth = 3; c.beginPath(); c.moveTo(16, -31); c.quadraticCurveTo(24, -34, 32, -32); c.stroke(); }
+  }
+  drawEye(c, S, P);
+  c.restore();
+}
+function drawPanther(c, o, S, k) {         // c is in world (ground layer) space
+  const P = o.P || buildPanther(o); P.k = k;
+  c.save(); c.translate(o.x, o.y - o.lift); c.rotate(o.rot); c.scale(o.s, o.s); c.globalAlpha *= (o.alpha ?? 1);
+  if (o.ghost) {                          // motion-trail copy: outline only
+    c.lineJoin = 'round'; c.strokeStyle = o.ghost; c.lineWidth = 3;
+    for (const g of [P.far, P.main, P.near]) for (const p of g) c.stroke(p);
+    c.restore(); return P;
+  }
+  const line = S.line || S.ink, line2 = S.line2 || line;
+  paintSet(c, P.far, S, S.far || S.fill, k, line2);
+  paintSet(c, P.main, S, S.fill, k, line);
+  paintSet(c, P.near, S, S.near || S.fill, k, line);
+  drawDetails(c, P, S);
+  c.restore(); return P;
+}
+
+// ---------------------------------------------------------------- per-frame state
+function state(t) {
+  const si = shotIdx(t), sh = T.shots[si];
+  const ta = T.stepFps ? Math.floor(t * T.stepFps + 1e-6) / T.stepFps : t;
+  const u = clamp((ta - sh.t[0]) / (sh.t[1] - sh.t[0]), 0, 1);
+  const D = Dat(ta), ph = PHat(ta), gy = T.gy || 700, S = SC(), mode = sh.mode || 'run';
+  const px = val(sh.px, u, 0);
+  let lift = 0, rot = 0, lu = 0;
+  if (mode === 'leap') { lu = u; lift = (sh.leap || 220) * Math.sin(Math.PI * lu); rot = -(sh.tilt ?? 0.3) * Math.cos(Math.PI * lu); }
+  const pan = { x: D + px, y: gy, lift, rot, mode, ph, lu, s: S, t: ta,
+    jaw: sh.jaw ? band(ta, sh.jaw[0], sh.jaw[1], 0.12, 0.25) : 0,
+    blink: sh.blink && Math.abs(ta - sh.blink) < 0.07 ? 1 : 0,
+    sparkle: sh.sparkle ? band(ta, sh.sparkle, sh.sparkle + 0.6, 0.1, 0.4) : 0 };
+  pan.P = buildPanther(pan);
+  let z = val(sh.z, u, 1) * AZ, cx, cy;
+  if (sh.cam === 'head') { cx = pan.P.head[0] + (sh.hx || 0); cy = pan.P.head[1] + (sh.hy || 0); }
+  else { cx = D + val(sh.cx, u, 0); cy = val(sh.cy, u, gy - 150) - (sh.follow ? lift * sh.follow : 0); }
+  if (sh.shake && ta >= sh.shake[0]) {
+    const dk = Math.exp(-(ta - sh.shake[0]) * 4) * sh.shake[1], fr = Math.floor(ta * 30);
+    cx += (hash(fr, 1) - 0.5) * dk / z; cy += (hash(fr, 2) - 0.5) * dk / z;
+  }
+  return { t, ta, si, sh, u, D, ph, gy, z, cx, cy, pan, S, step: T.stepFps ? Math.round(ta * T.stepFps) : Math.floor(t * 30) };
+}
+function layerTf(c, st, p) {
+  const zl = Math.max(0.2, lerp(AZ, st.z, p));
+  let ox = st.cx * p, oy = p >= 1 ? st.cy : lerp(500, st.cy, p);
+  if (T.boil) { ox += (hash(st.step, p * 13) - 0.5) * T.boil; oy += (hash(st.step, p * 17 + 3) - 0.5) * T.boil; }
+  const k = U * zl; c.setTransform(k, 0, 0, k, W / 2 - k * ox, H / 2 - k * oy);
+  const hw = W / 2 / k, hh = H / 2 / k;
+  return { x0: ox - hw, x1: ox + hw, y0: oy - hh, y1: oy + hh, zl, k, p };
+}
+function tiles(x0, x1, sp, fn, pad = 1, seed = 0) {
+  const a = Math.floor(x0 / sp) - pad, b = Math.ceil(x1 / sp) + pad;
+  for (let i = a; i <= b; i++) fn(i * sp, i, hash(i, sp + seed));
+}
+
+// ---------------------------------------------------------------- screen effects
+function speedLines(c, st, kind, col, k = 1) {
+  const seed = Math.floor(st.t * 24); c.save(); c.strokeStyle = col; c.fillStyle = col;
+  if (kind === 'h') {
+    for (let i = 0; i < 30 * k; i++) {
+      const y = hash(i, seed) * 1000, x = (hash(i + 50, seed) - 0.3) * VW * 1.3, len = 80 + hash(i + 9, seed) * 300;
+      c.globalAlpha = 0.2 + hash(i + 3, seed) * 0.45; c.lineWidth = 1 + hash(i + 7, seed) * 3.5;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x - len, y); c.stroke();
+    }
+  } else {
+    const cy = 500, R = Math.hypot(VW, 1000);
+    for (let i = 0; i < 70 * k; i++) {
+      const a = hash(i, seed) * TAU, r0 = 250 + hash(i + 1, seed) * 140, w = 0.003 + hash(i + 2, seed) * 0.01;
+      c.globalAlpha = 0.5 + hash(i + 4, seed) * 0.5; c.beginPath();
+      c.moveTo(Math.cos(a) * r0, cy + Math.sin(a) * r0); c.lineTo(Math.cos(a - w) * R, cy + Math.sin(a - w) * R); c.lineTo(Math.cos(a + w) * R, cy + Math.sin(a + w) * R); c.fill();
+    }
+  }
+  c.restore();
+}
+function txt(c, s, x, y, size, o = {}) {
+  c.save();
+  const font = () => `${o.italic ? 'italic ' : ''}${o.weight || 900} ${size}px ${o.font || 'Impact, "Arial Black", sans-serif'}`;
+  c.font = font(); c.textAlign = o.align || 'center'; c.textBaseline = o.base || 'middle';
+  if (o.spacing) c.letterSpacing = o.spacing + 'px';
+  if (o.maxW) { const w = c.measureText(s).width; if (w > o.maxW) { size *= o.maxW / w; c.font = font(); } }
+  c.globalAlpha *= (o.alpha ?? 1);
+  if (o.shadow) { c.fillStyle = o.shadow; c.fillText(s, x + (o.sx ?? size * 0.06), y + (o.sy ?? size * 0.06)); }
+  if (o.glow) { c.shadowColor = o.glow; c.shadowBlur = (o.blur || 20) * U; }
+  if (o.stroke) { c.lineJoin = 'round'; c.strokeStyle = o.stroke; c.lineWidth = o.sw || size * 0.12; c.strokeText(s, x, y); }
+  if (o.fill !== null) { c.fillStyle = o.fill || '#fff'; c.fillText(s, x, y); if (o.glow && o.double) c.fillText(s, x, y); }
+  c.restore(); return size;
+}
+
+// ---------------------------------------------------------------- post effects
+function noiseTile() {
+  return buf('noise', 256, 256, (g, w, h) => { const d = g.createImageData(w, h); for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } g.putImageData(d, 0, 0); });
+}
+function paperTile() {
+  return buf('paper', 512, 512, (g, w, h) => {
+    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) { g.strokeStyle = `rgba(110,90,60,${0.04 + Math.random() * 0.08})`; g.lineWidth = 0.6 + Math.random(); const x = Math.random() * w, y = Math.random() * h, a = Math.random() * TAU, l = 3 + Math.random() * 14; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); }
+    for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(140,110,70,${Math.random() * 0.05})`; g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 10 + Math.random() * 50, 0, TAU); g.fill(); }
+  });
+}
+const POST = {
+  bloom(st, k = 0.5) {
+    const b = buf('bloom', W / 4, H / 4), g = b.getContext('2d');
+    g.filter = `blur(${Math.max(2, H / 500)}px)`; g.clearRect(0, 0, b.width, b.height); g.drawImage(cv, 0, 0, b.width, b.height); g.filter = 'none';
+    X.globalCompositeOperation = 'screen'; X.globalAlpha = k; X.drawImage(b, 0, 0, W, H);
+  },
+  vhs(st, k = 1) {
+    const b = buf('vhs', W, H), g = b.getContext('2d'); g.clearRect(0, 0, W, H); g.drawImage(cv, 0, 0);
+    X.globalCompositeOperation = 'screen'; X.globalAlpha = 0.2 * k; X.drawImage(b, W * 0.005, 0);
+    X.globalCompositeOperation = 'source-over'; X.globalAlpha = 1;
+    const by = (((st.t * 0.23) % 1.3) - 0.15) * H, bh = H * 0.022, sx = (hash(Math.floor(st.t * 30)) - 0.5) * W * 0.03 * k;
+    X.drawImage(b, 0, by, W, bh, sx, by, W, bh);
+  },
+  scan(st, k = 0.25) {
+    const n = Math.max(3, Math.round(H / 420));
+    const p = buf('scan', 4, n, (g, w, h) => { g.fillStyle = '#000'; g.fillRect(0, 0, w, Math.max(1, Math.round(h / 3))); });
+    X.globalAlpha = k; X.fillStyle = X.createPattern(p, 'repeat'); X.fillRect(0, 0, W, H);
+  },
+  grain(st, k = 0.06) {
+    const pat = X.createPattern(noiseTile(), 'repeat'); pat.setTransform(new DOMMatrix().translate(hash(st.step, 9) * 256, hash(st.step, 7) * 256).scale(Math.max(1, H / 1400)));
+    X.globalCompositeOperation = 'overlay'; X.globalAlpha = k; X.fillStyle = pat; X.fillRect(0, 0, W, H);
+  },
+  vignette(st, k = 0.5, col = '0,0,0') {
+    const g = X.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.hypot(W, H) * 0.6);
+    g.addColorStop(0, `rgba(${col},0)`); g.addColorStop(1, `rgba(${col},${k})`); X.fillStyle = g; X.fillRect(0, 0, W, H);
+  },
+  paper(st, k = 0.5) {
+    const pat = X.createPattern(paperTile(), 'repeat'); pat.setTransform(new DOMMatrix().scale(Math.max(1, H / 1200)));
+    X.globalCompositeOperation = 'multiply'; X.globalAlpha = k; X.fillStyle = pat; X.fillRect(0, 0, W, H);
+  },
+  pixel(st, n = 135, levels = 6) {
+    const b = Math.max(2, Math.round(Math.min(W, H) / n)), w = Math.ceil(W / b), h = Math.ceil(H / b);
+    const s = buf('pix', w, h), g = s.getContext('2d'); g.imageSmoothingEnabled = true; g.clearRect(0, 0, w, h); g.drawImage(cv, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h), a = d.data, q = 255 / (levels - 1);
+    for (let i = 0; i < a.length; i += 4) { a[i] = Math.round(a[i] / q) * q; a[i + 1] = Math.round(a[i + 1] / q) * q; a[i + 2] = Math.round(a[i + 2] / q) * q; }
+    g.putImageData(d, 0, 0); X.imageSmoothingEnabled = false; X.drawImage(s, 0, 0, w * b, h * b); X.imageSmoothingEnabled = true;
+  },
+  bleed(st, k = 0.4, r = 7) {          // wet paint spreading a little past its edges
+    const b = buf('bleed', W, H), g = b.getContext('2d'); g.clearRect(0, 0, W, H); g.drawImage(cv, 0, 0);
+    X.filter = `blur(${r * H / 1920}px)`; X.globalCompositeOperation = 'multiply'; X.globalAlpha = k; X.drawImage(b, 0, 0);
+  },
+  blotch(st, k = 0.3) {                // uneven pigment: large soft light and dark patches fixed to the paper
+    const t = buf('blotch', 512, 512, (g, w, h) => { g.fillStyle = '#808080'; g.fillRect(0, 0, w, h); g.filter = 'blur(14px)';
+      for (let i = 0; i < 90; i++) { const v = hash(i, 5) > 0.5 ? 255 : 0; g.fillStyle = `rgba(${v},${v},${v},${0.1 + 0.16 * hash(i, 6)})`; for (const dx of [-512, 0, 512]) for (const dy of [-512, 0, 512]) { g.beginPath(); g.ellipse(hash(i, 1) * 512 + dx, hash(i, 2) * 512 + dy, 20 + hash(i, 3) * 70, 14 + hash(i, 4) * 50, hash(i, 7) * 3, 0, TAU); g.fill(); } } });
+    const pat = X.createPattern(t, 'repeat'); pat.setTransform(new DOMMatrix().scale(H / 1000)); X.globalCompositeOperation = 'soft-light'; X.globalAlpha = k; X.fillStyle = pat; X.fillRect(0, 0, W, H);
+  },
+  speck(st, col = '#1f3b33', k = 0.55) {   // tiny gaps in every stroke, the way chalk skips on a board
+    const t = buf('speck' + col, 256, 256, (g, w, h) => { g.fillStyle = col; for (let i = 0; i < 5200; i++) g.fillRect(hash(i, 1) * w, hash(i, 2) * h, 1 + hash(i, 3) * 1.6, 1 + hash(i, 4) * 1.6); });
+    const pat = X.createPattern(t, 'repeat'); pat.setTransform(new DOMMatrix().scale(Math.max(1, H / 1500))); X.globalAlpha = k; X.fillStyle = pat; X.fillRect(0, 0, W, H);
+  },
+  tint(st, col = '#ff8800', k = 0.15, op = 'overlay') { X.globalCompositeOperation = op; X.globalAlpha = k; X.fillStyle = col; X.fillRect(0, 0, W, H); },
+};
+
+// ---------------------------------------------------------------- one frame
+function frame(t) {
+  if (T.render) return T.render(t);          // a teaser may bring its own renderer (see t6-stardust.js)
+  const st = state(t), S = T.style;
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = 1; X.globalCompositeOperation = 'source-over'; X.filter = 'none'; X.shadowBlur = 0;
+  screenTf(X); X.save(); T.sky(X, st); X.restore();
+  let panDone = false;
+  const doPanther = () => {
+    panDone = true; const v = layerTf(X, st, 1), o = st.pan;
+    X.save();
+    if (T.shadow !== null) { X.fillStyle = T.shadow || 'rgba(0,0,0,.3)'; X.beginPath(); X.ellipse(o.x + 6 * o.s, o.y + 2, 125 * o.s * (1 - Math.min(o.lift / 500, 0.6)), 9 * o.s, 0, 0, TAU); X.fill(); }
+    if (T.beforePanther) T.beforePanther(X, v, st);
+    if (S.trail && o.mode !== 'stand') for (let j = S.trail; j >= 1; j--) {
+      const g = Object.assign({}, o, { ph: o.ph - j * 0.045, x: o.x - j * 34 * o.s, P: null, alpha: 0.55 * (1 - j / (S.trail + 1)), ghost: j % 2 ? S.line2 || S.line : S.line, jaw: 0 });
+      drawPanther(X, g, S, v.k * o.s);
+    }
+    S.jit = (hash(st.step, 5) - 0.5) * 3;
+    (T.drawPanther || drawPanther)(X, o, S, v.k * o.s);     // a teaser may draw its own panther geometry (see t9-every-angle.js)
+    if (T.afterPanther) T.afterPanther(X, v, st);
+    X.restore();
+  };
+  for (const L of T.layers) {
+    if (L.p > 1 && !panDone) doPanther();
+    const v = layerTf(X, st, L.p); X.save(); L.draw(X, v, st); X.restore();
+  }
+  if (!panDone) doPanther();
+  screenTf(X);
+  const sh = st.sh;
+  if (sh.speed && (!sh.speedT || (st.t >= sh.speedT[0] && st.t < sh.speedT[1]))) { X.save(); speedLines(X, st, sh.speed, sh.speedCol || T.fxColor || '#fff', sh.speedK || 1); X.restore(); }
+  if (T.overlay) { X.save(); T.overlay(X, st); X.restore(); }
+  if (sh.flash !== undefined) { const a = 1 - (st.t - sh.t[0]) / 0.3; if (a > 0) { X.save(); X.globalAlpha = a * (sh.flash || 1); X.fillStyle = T.flashCol || '#fff'; X.fillRect(-VW, 0, VW * 2, 1000); X.restore(); } }
+  X.setTransform(1, 0, 0, 1, 0, 0);
+  for (const fx of T.post || []) { const [n, ...a] = Array.isArray(fx) ? fx : [fx]; X.save(); POST[n](st, ...a); X.restore(); }
+  if (T.inverts && T.inverts.some(([a, b]) => st.t >= a && st.t < b)) { X.save(); X.globalCompositeOperation = 'difference'; X.fillStyle = '#fff'; X.fillRect(0, 0, W, H); X.restore(); }
+  if (T.final) { X.save(); screenTf(X); T.final(X, st); X.restore(); }
+  return st;
+}
+
+// ---------------------------------------------------------------- sound kit (works on live and offline audio contexts)
+function kit(ctx, out) {
+  const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.25;
+  const mg = ctx.createGain(); mg.gain.value = T.vol || 0.7; comp.connect(mg); mg.connect(out);
+  const sr = ctx.sampleRate, rl = Math.floor(sr * (T.revLen || 2.6)), ir = ctx.createBuffer(2, rl, sr);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < rl; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / rl, 3.2); }
+  const rv = ctx.createConvolver(); rv.buffer = ir; const rvg = ctx.createGain(); rvg.gain.value = 0.55; rv.connect(rvg); rvg.connect(comp);
+  const nb = ctx.createBuffer(1, sr * 2, sr); { const d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  function chain(src, t, o) {
+    let n = src; const dur = o.dur;
+    for (const [type, key] of [['lowpass', 'lp'], ['highpass', 'hp'], ['bandpass', 'bp']]) if (o[key]) {
+      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(o[key], t); f.Q.value = o.q || (type === 'bandpass' ? 1.2 : 0.7);
+      if (o[key + 'To']) f.frequency.exponentialRampToValueAtTime(o[key + 'To'], t + (o.fT || dur));
+      n.connect(f); n = f;
+    }
+    const g = ctx.createGain(), v = o.vol ?? 0.3, a = o.a ?? 0.004;
+    if (o.r !== undefined) { g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + a); g.gain.setValueAtTime(v, Math.max(t + a, t + dur - o.r)); g.gain.linearRampToValueAtTime(0, t + dur); }
+    else { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(dur, a + 0.01)); }
+    n.connect(g); const p = ctx.createStereoPanner(); p.pan.value = o.pan || 0; g.connect(p); p.connect(comp);
+    if (o.rev) { const s = ctx.createGain(); s.gain.value = o.rev; p.connect(s); s.connect(rv); }
+  }
+  const A = {
+    tone(t, f, dur, o = {}) {
+      if (t < 0 || t > DUR) return; const os = ctx.createOscillator(); os.type = o.type || 'sine'; os.frequency.setValueAtTime(f, t);
+      if (o.slide) os.frequency.exponentialRampToValueAtTime(o.slide, t + (o.slideT || dur));
+      if (o.detune) os.detune.value = o.detune;
+      if (o.vib) { const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = o.vib[0]; lg.gain.value = o.vib[1]; l.connect(lg); lg.connect(os.frequency); l.start(t); l.stop(t + dur + 0.1); }
+      os.start(t); os.stop(t + dur + 0.1); chain(os, t, Object.assign({}, o, { dur }));
+    },
+    noise(t, dur, o = {}) {
+      if (t < 0 || t > DUR) return; const s = ctx.createBufferSource(); s.buffer = nb; s.loop = true;
+      s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.1); chain(s, t, Object.assign({}, o, { dur }));
+    },
+    kick(t, v = 1) { A.tone(t, 150, 0.4, { slide: 40, slideT: 0.12, vol: 0.95 * v }); A.noise(t, 0.02, { vol: 0.25 * v, hp: 2500 }); },
+    snare(t, v = 1, rev = 0.25) { A.noise(t, 0.24, { vol: 0.45 * v, bp: 1900, q: 0.7, rev }); A.tone(t, 200, 0.12, { type: 'triangle', slide: 130, vol: 0.3 * v }); },
+    clap(t, v = 1) { for (let i = 0; i < 3; i++) A.noise(t + i * 0.011, 0.14, { vol: 0.35 * v, bp: 1300, q: 1.2, rev: 0.2 }); },
+    hat(t, v = 1, open = false) { A.noise(t, open ? 0.3 : 0.05, { vol: 0.16 * v, hp: 7500 }); },
+    crash(t, v = 1) { A.noise(t, 1.8, { vol: 0.22 * v, hp: 4500, rev: 0.4 }); },
+    taiko(t, v = 1, f = 70) { A.tone(t, f * 1.7, 0.8, { slide: f, slideT: 0.07, vol: 1.0 * v, rev: 0.35 }); A.noise(t, 0.09, { vol: 0.35 * v, lp: 900 }); },
+    tom(t, f = 180, v = 1) { A.tone(t, f * 1.4, 0.3, { slide: f, slideT: 0.05, vol: 0.55 * v, rev: 0.15 }); },
+    bass(t, n, dur, o = {}) { A.tone(t, mtof(n), dur, Object.assign({ type: 'sawtooth', lp: 520, vol: 0.32, r: 0.04, a: 0.006 }, o)); },
+    pad(t, notes, dur, o = {}) { for (const n of notes) for (const d of [-7, 7]) A.tone(t, mtof(n), dur, Object.assign({ type: 'sawtooth', vol: 0.045, a: 0.5, r: 0.8, lp: 1400, rev: 0.6, detune: d }, o)); },
+    pluck(t, n, o = {}) { A.tone(t, mtof(n), o.dur || 0.7, Object.assign({ type: 'sawtooth', vol: 0.16, lp: 3200, lpTo: 260, fT: 0.4, rev: 0.3 }, o)); },
+    marimba(t, n, v = 1) { A.tone(t, mtof(n), 0.5, { vol: 0.32 * v, rev: 0.25 }); A.tone(t, mtof(n) * 4, 0.08, { vol: 0.06 * v }); },
+    flute(t, n, dur, o = {}) { const f = mtof(n); A.tone(t, f, dur, Object.assign({ vol: 0.17, a: 0.12, r: 0.25, vib: [5.2, f * 0.012], rev: 0.55 }, o)); A.noise(t, dur, { vol: 0.03, bp: f * 2, q: 4, a: 0.1, r: 0.2 }); },
+    chip(t, n, dur, o = {}) { A.tone(t, mtof(n), dur, Object.assign({ type: 'square', vol: 0.09, a: 0.003, r: 0.02 }, o)); },
+    whoosh(t, dur = 0.6, v = 1) { A.noise(t, dur, { vol: 0.42 * v, bp: 300, bpTo: 2600, q: 0.9, a: dur * 0.6, fT: dur * 0.8, rev: 0.2 }); },
+    riser(t0, t1, v = 1) { const d = t1 - t0; A.noise(t0, d, { vol: 0.3 * v, hp: 300, hpTo: 6000, a: d * 0.95, r: 0.02 }); A.tone(t0, 110, d, { type: 'sawtooth', slide: 880, lp: 2400, vol: 0.08 * v, a: d * 0.9, r: 0.02 }); },
+    boom(t, v = 1) { A.tone(t, 72, 2.4, { slide: 28, slideT: 1.6, vol: 1.1 * v }); A.noise(t, 1.6, { vol: 0.5 * v, lp: 700, lpTo: 60, rev: 0.5 }); },
+    impact(t, v = 1) { A.boom(t, v); A.snare(t, v, 0.5); A.crash(t, v); },
+    roar(t, dur = 1, v = 1) {
+      A.tone(t, 115, dur, { type: 'sawtooth', slide: 70, lp: 1100, vol: 0.4 * v, a: 0.06, vib: [26, 14], rev: 0.4 });
+      A.tone(t, 172, dur, { type: 'sawtooth', slide: 98, lp: 900, vol: 0.24 * v, a: 0.08, vib: [31, 18] });
+      A.noise(t, dur, { vol: 0.42 * v, bp: 650, bpTo: 380, q: 2, a: 0.08, rev: 0.4 });
+    },
+    // play a melody: list of [beat, midi, beats] with a beat length b and an instrument fn(t, n, dur)
+    seq(t0, b, notes, fn) { for (const [at, n, len] of notes) if (n !== null) fn(t0 + at * b, n, (len || 1) * b); },
+  };
+  return A;
+}
+async function renderAudio() {
+  const sr = 44100, oc = new OfflineAudioContext(2, Math.ceil(DUR * sr), sr);
+  T.music(kit(oc, oc.destination)); return oc.startRendering();
+}
+function wavB64(b) {
+  const n = b.length, ab = new ArrayBuffer(44 + n * 4), d = new DataView(ab), L = b.getChannelData(0), R = b.getChannelData(1);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); d.setUint32(4, 36 + n * 4, true); ws(8, 'WAVE'); ws(12, 'fmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 2, true);
+  d.setUint32(24, b.sampleRate, true); d.setUint32(28, b.sampleRate * 4, true); d.setUint16(32, 4, true); d.setUint16(34, 16, true); ws(36, 'data'); d.setUint32(40, n * 4, true);
+  let o = 44; for (let i = 0; i < n; i++) { d.setInt16(o, clamp(L[i], -1, 1) * 32767, true); d.setInt16(o + 2, clamp(R[i], -1, 1) * 32767, true); o += 4; }
+  const by = new Uint8Array(ab); let s = ''; for (let i = 0; i < by.length; i += 0x8000) s += String.fromCharCode.apply(null, by.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+// ---------------------------------------------------------------- capture API (used by tools/capf.js) and the preview player
+window.renderAudioWav = async () => wavB64(await renderAudio());
+window.cap = i => { frame(i / FPS); return cv.toDataURL('image/jpeg', 0.92).split(',')[1]; };
+window.contact = (times, cols = 3, scale = 0.5) => {
+  const cw = Math.round(W * scale), ch = Math.round(H * scale), rows = Math.ceil(times.length / cols), out = mk(cw * cols, ch * rows), o = out.getContext('2d');
+  times.forEach((t, i) => { frame(t); const x = (i % cols) * cw, y = Math.floor(i / cols) * ch; o.drawImage(cv, x, y, cw, ch); o.fillStyle = '#ff0'; o.font = 'bold 22px sans-serif'; o.fillText(t.toFixed(2) + 's', x + 8, y + 26); });
+  return out.toDataURL('image/png').split(',')[1];
+};
+window.timeIt = n => { const a = performance.now(); for (let i = 0; i < n; i++) frame((i * 0.73) % DUR); return (performance.now() - a) / n; };
+
+function preview() {
+  const ui = document.getElementById('ui'); let actx = null, src = null, abuf = null, t0 = performance.now() / 1000, at0 = 0, paused = false, pt = 0;
+  const btn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; ui.appendChild(b); return b; };
+  const play = btn('▶ Play with sound', async () => {
+    if (!abuf) { play.textContent = 'Preparing sound…'; abuf = await renderAudio(); }
+    actx = actx || new AudioContext(); if (src) try { src.stop(); } catch (e) {}
+    src = actx.createBufferSource(); src.buffer = abuf; src.connect(actx.destination); src.start(); at0 = actx.currentTime; paused = false; play.textContent = '↺ Restart';
+  });
+  btn('9:16', () => setSize(1080, 1920)); btn('16:9', () => setSize(1920, 1080));
+  const lab = btn('', () => { paused = !paused; if (paused) { pt = now(); if (src) try { src.stop(); src = null; } catch (e) {} } else { t0 = performance.now() / 1000 - pt; } });
+  const now = () => paused ? pt : src ? actx.currentTime - at0 : (performance.now() / 1000 - t0) % DUR;
+  (function loop() {
+    let t = now(); if (src && t >= DUR) { src.stop(); src = null; t0 = performance.now() / 1000; t = 0; play.textContent = '▶ Play with sound'; }
+    frame(Math.min(t, DUR - 0.001)); lab.textContent = (paused ? '⏸ ' : '') + t.toFixed(1) + 's';
+    requestAnimationFrame(loop);
+  })();
+}
+function boot() {
+  DUR = T.DUR || 15; window.DUR = DUR;
+  setSize(+QS.get('w') || 1080, +QS.get('h') || 1920);
+  if (T.shots) precompute(); if (T.init) T.init();
+  if (CAPTURE) { document.body.classList.add('cap'); frame(0); } else preview();
+  window.READY = true;
+}

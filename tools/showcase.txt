@@ -1,0 +1,127 @@
+// ---- PANTHER SHOWCASE: a studio stage, a guided camera tour, and controls to try every coat and style ----
+const CAST = CFG.cast || [
+  ['Black Panther', 'blackP2', null, 'Panthera pardus · melanistic'], ['Golden Panther', 'goldenPanther', null, 'Panthera pardus · golden'],
+  ['Leopard', 'leopardDay', 'rosettes', 'Panthera pardus'], ['Jaguar', 'jaguar', 'rosettes', 'Panthera onca'], ['Snow Leopard', 'snowLeopard', 'rosettes', 'Panthera uncia'],
+  ['Tiger', 'bengalTiger', 'stripes', 'Panthera tigris'], ['White Tiger', 'whiteTiger', 'stripes', 'Panthera tigris · white'], ['Cheetah', 'cheetah', 'spots', 'Acinonyx jubatus'],
+  ['Lioness', 'goldenLioness', null, 'Panthera leo']];
+var SHOW_COAT = null, SHOW_MARKS = null, SHOW_SOLO = true;
+const SHOW = { tour: true, pick: 0, pickAt: -9, man: null, ui: null };
+const GAITS = [['WALK', 0, 8.2], ['RUN', 8.2, 17.3], ['SPRINT', 17.3, 27.2], ['WALK', 27.2, 99]];
+const STAGE = { bg: ['#211335', '#100c1e', '#040409'], floor: '#0c0b15', grid: 'rgba(140,150,255,0.13)', spot: '255,176,110', spot2: '120,170,255' };
+const CAST_SEG = CFG.castSeg || STORY / CAST.length;               // seconds each cat is on stage
+function castIndex() { return SHOW.tour ? Math.min(CAST.length - 1, Math.floor(STL / CAST_SEG)) : SHOW.pick; }
+function setCast(i) {
+  const c = CAST[i], coat = COATS[c[1]];
+  SHOW_COAT = coat; SHOW_MARKS = c[2];
+  if (SHOW.tour) SHOW.pickAt = Math.min(CAST.length - 1, Math.floor(STL / CAST_SEG)) * CAST_SEG;
+  else if (SHOW.lastCast !== i) SHOW.pickAt = STL;
+  SHOW.lastCast = i;
+}
+function showcaseCam() {                                     // drag to orbit, scroll to zoom
+  setCast(castIndex());
+  if (CFG.aim && !SHOW.man) CAMFX = -keyVal(CFG.aim, STL) * sc / W;   // aim keys: the point on the cat (body units ahead) to centre, in any frame shape
+  const m = SHOW.man; if (!m) return;
+  CAMYAW = m.yaw; CAMTILT = m.tilt; CH_D = 1150; CAMFY = m.fy || 0.62; CAMFX = m.fx || 0;
+  sc = SC0 * m.zoom; ox = W / 2 + 40 * sc;
+}
+function drawStage(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, STAGE.bg[0]); g.addColorStop(0.55, STAGE.bg[1]); g.addColorStop(1, STAGE.bg[2]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const c0 = P3s(0, 170, 0);
+  hzPuff(c0[0], c0[1], S * 0.62, `rgba(${STAGE.spot},0.28)`, `rgba(${STAGE.spot},0.1)`, `rgba(${STAGE.spot},0)`);
+  hzPuff(W * 0.85, H * 0.12, S * 0.5, `rgba(${STAGE.spot2},0.16)`, `rgba(${STAGE.spot2},0.05)`, `rgba(${STAGE.spot2},0)`);
+  hzFill(hzBand(-9000, 9000, -5000, 5000, 30), STAGE.floor);
+  ctx.strokeStyle = STAGE.grid; ctx.lineWidth = Math.max(1, sc * 1.2); ctx.beginPath();
+  const step = 260, f0 = -Math.floor(SD % step);
+  for (let k = -24; k <= 30; k++) { const f = f0 + k * step, c = hzClip(f, f + 0.01, 0); for (let zz = -3000; zz < 3000; zz += 300) { if (!hzVis(f, zz) || !hzVis(f, zz + 300)) continue; const a = P3s(f, 0, zz), b = P3s(f, 0, zz + 300); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } }
+  for (let zz = -3000; zz <= 3000; zz += step) { const c = hzClip(-6000, 7000, zz); if (!c) continue; const a = P3s(c[0], 0, zz), b = P3s(c[1], 0, zz); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+  ctx.stroke();
+  const pool = hzRing(30, 0, 1100, 900);                       // a pool of light on the floor
+  const pc = P3s(30, 0, 0), pg = ctx.createRadialGradient(pc[0], pc[1], 0, pc[0], pc[1], 520 * hzK(30, 0, 0));
+  pg.addColorStop(0, `rgba(${STAGE.spot},0.22)`); pg.addColorStop(1, `rgba(${STAGE.spot},0)`); ctx.fillStyle = pg; fillPoly(ctx, pool);
+}
+function drawShowcase(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  const i = castIndex(), c = CAST[i], k = smooth(clamp((STL - SHOW.pickAt) / 0.5)) * (SHOW.tour ? 1 - smooth(clamp((STL - SHOW.pickAt - (STORY / CAST.length - 0.5)) / 0.5)) : 1);
+  const x0 = S * 0.06, y0 = H * 0.09;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  try { ctx.letterSpacing = `${Math.round(S * 0.012)}px`; } catch (e) {}
+  ctx.font = `600 ${Math.round(S * 0.026)}px "Segoe UI", system-ui, sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText(CFG.castHeader || 'PANTHERA  ·  MEET THE CAST', x0, y0);
+  ctx.fillStyle = '#ffb46e'; ctx.fillRect(x0, y0 + S * 0.018, S * 0.12, Math.max(2, S * 0.004));
+  try { ctx.letterSpacing = `${Math.round(S * 0.004)}px`; } catch (e) {}
+  ctx.globalAlpha = k; ctx.font = `300 ${Math.round(S * 0.085)}px "Segoe UI Light", "Segoe UI", system-ui, sans-serif`; ctx.fillStyle = '#ffffff';
+  ctx.fillText(c[0].toUpperCase(), x0 - (1 - k) * S * 0.05, y0 + S * 0.11);
+  ctx.font = `italic 400 ${Math.round(S * 0.03)}px Georgia, "Times New Roman", serif`; ctx.fillStyle = 'rgba(255,214,170,0.85)';
+  ctx.fillText(c[3], x0, y0 + S * 0.16);
+  if (c[4]) { ctx.font = `600 ${Math.round(S * 0.034)}px "Segoe UI", system-ui, sans-serif`; ctx.fillStyle = '#ffffff'; wrapText(c[4], x0, y0 + S * 0.225, W - x0 * 2, S * 0.045); }
+  ctx.globalAlpha = 1;
+  if (CFG.castEnd && STL > CAST.length * CAST_SEG) castEndCard();
+  if (CFG.cast) return;                                          // the cast video only walks, so no gait strip
+  // gait strip
+  const gi = GAITS.findIndex(g => STL >= g[1] && STL < g[2]), yb = H * (window.SHOW_UI ? 0.8 : 0.9);
+  try { ctx.letterSpacing = `${Math.round(S * 0.008)}px`; } catch (e) {}
+  ctx.font = `700 ${Math.round(S * 0.026)}px "Segoe UI", system-ui, sans-serif`;
+  let xx = x0;
+  for (const [j, name] of [[0, 'WALK'], [1, 'RUN'], [2, 'SPRINT']]) {
+    const on = (gi === 3 ? 0 : gi) === j; ctx.fillStyle = on ? '#ffffff' : 'rgba(255,255,255,0.3)'; ctx.fillText(name, xx, yb);
+    if (on) { ctx.fillStyle = '#ffb46e'; ctx.fillRect(xx, yb + S * 0.012, ctx.measureText(name).width, Math.max(2, S * 0.004)); }
+    xx += ctx.measureText(name).width + S * 0.05;
+  }
+  const kmh = Math.round(tab(TAB0.v, STL) * 0.088);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillText(kmh + ' KM/H', xx + S * 0.02, yb);
+  try { ctx.letterSpacing = '0px'; } catch (e) {}
+}
+// ---- camera and coat from the address: ?yaw=5&tilt=6&zoom=2.6&fx=-0.4&fy=0.6&coat=2 (close-ups of the face) ----
+if (params.get('zoom')) SHOW.man = { yaw: +(params.get('yaw') || 10), tilt: +(params.get('tilt') || 6), zoom: +params.get('zoom'), fx: +(params.get('fx') || 0), fy: +(params.get('fy') || 0.62) };
+if (params.get('coat')) { SHOW.tour = false; SHOW.pick = +params.get('coat'); }
+// ---- the controls (not shown when a video is being rendered) ----
+(() => {
+  if (params.get('capture')) return;
+  window.SHOW_UI = true;
+  const css = document.createElement('style');
+  css.textContent = `#pui{position:fixed;left:0;right:0;bottom:0;padding:10px 12px 14px;background:linear-gradient(transparent,rgba(5,4,12,.85) 30%);font:600 12px "Segoe UI",system-ui,sans-serif;color:#fff;display:flex;flex-direction:column;gap:8px;z-index:9}
+  #pui .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}#pui .lab{opacity:.55;letter-spacing:.12em;font-size:10px;width:54px}
+  #pui button{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:6px 11px;font:inherit;cursor:pointer}
+  #pui button.on{background:#ffb46e;color:#1a1020;border-color:#ffb46e}#pui .hint{opacity:.45;font-weight:400}`;
+  document.head.appendChild(css);
+  const ui = document.createElement('div'); ui.id = 'pui'; document.body.appendChild(ui);
+  const row = (label) => { const r = document.createElement('div'); r.className = 'row'; const l = document.createElement('span'); l.className = 'lab'; l.textContent = label; r.appendChild(l); ui.appendChild(r); return r; };
+  const btn = (r, text, on, fn) => { const b = document.createElement('button'); b.textContent = text; if (on) b.className = 'on'; b.onclick = e => { e.stopPropagation(); fn(b); refresh(); }; r.appendChild(b); return b; };
+  const coatBtns = [], gaitBtns = [], tog = {};
+  const rc = row('COAT'); CAST.forEach((c, i) => coatBtns.push(btn(rc, c[0], false, () => { SHOW.tour = false; SHOW.pick = i; SHOW.pickAt = STL; })));
+  const tourB = btn(rc, 'Tour', true, () => { SHOW.tour = !SHOW.tour; });
+  const rg = row('GAIT');
+  [['Walk', 0.5], ['Run', 9.5], ['Sprint', 19]].forEach(([n, at]) => gaitBtns.push(btn(rg, n, false, () => { T0 = at; startTime = performance.now(); })));
+  const soloB = btn(rg, 'Solo', true, () => { SHOW_SOLO = !SHOW_SOLO; });
+  const rs = row('STYLE');
+  for (const [key, name, val] of [['face', 'Anime face', 'anime'], ['blush', 'Blush', 0.8], ['fang', 'Fang', 1], ['outline', 'Ink outline', 1.15], ['rim2', 'Second rim light', 0.45], ['gloss', 'Gloss', 1], ['eyeGlow', 'Eye glow', 0.35], ['bounce', 'Bounce light', 0.16]])
+    tog[key] = btn(rs, name, true, () => { PSTYLE[key] = PSTYLE[key] ? 0 : val; });
+  const hint = document.createElement('span'); hint.className = 'hint'; hint.textContent = 'drag to orbit · scroll to zoom · double-click to resume the tour'; rs.appendChild(hint);
+  function refresh() {
+    coatBtns.forEach((b, i) => b.className = !SHOW.tour && SHOW.pick === i ? 'on' : ''); tourB.className = SHOW.tour ? 'on' : ''; soloB.className = SHOW_SOLO ? 'on' : '';
+    for (const k in tog) tog[k].className = PSTYLE[k] ? 'on' : '';
+  }
+  setInterval(() => { const gi = GAITS.findIndex(g => STL >= g[1] && STL < g[2]); gaitBtns.forEach((b, j) => b.className = (gi === 3 ? 0 : gi) === j ? 'on' : ''); }, 250);
+  let drag = null;
+  window.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('#pui')) return; drag = { x: e.clientX, y: e.clientY, m: SHOW.man || { yaw: CAMYAW, tilt: CAMTILT, zoom: sc / SC0 } }; });
+  window.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) < 3 && !SHOW.man) return;
+    SHOW.man = { yaw: clamp(drag.m.yaw + dx * 0.35, -80, 95), tilt: clamp(drag.m.tilt + dy * 0.25, 0, 75), zoom: drag.m.zoom }; });
+  window.addEventListener('pointerup', () => { drag = null; });
+  window.addEventListener('wheel', e => { const m = SHOW.man || { yaw: CAMYAW, tilt: CAMTILT, zoom: sc / SC0 }; SHOW.man = { ...m, zoom: clamp(m.zoom * Math.exp(-e.deltaY * 0.0012), 0.4, 2.6) }; }, { passive: true });
+  window.addEventListener('dblclick', () => { SHOW.man = null; SHOW.tour = true; refresh(); });
+  refresh();
+})();
+
+function wrapText(txt, x, y, maxW, lh) { let line = ''; for (const w of txt.split(' ')) { const tl = line ? line + ' ' + w : w; if (ctx.measureText(tl).width > maxW && line) { ctx.fillText(line, x, y); y += lh; line = w; } else line = tl; } if (line) ctx.fillText(line, x, y); }
+function castEndCard() {                                       // the closing question, inviting comments
+  const k = smooth(clamp((STL - CAST.length * CAST_SEG) / 0.4)); ctx.save(); ctx.globalAlpha = k;
+  ctx.fillStyle = 'rgba(8,6,16,0.6)'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff';
+  try { ctx.letterSpacing = `${Math.round(S * 0.004)}px`; } catch (e) {}
+  ctx.font = `300 ${Math.round(S * 0.075)}px "Segoe UI Light", "Segoe UI", system-ui, sans-serif`;
+  const lines = CFG.castEnd.split('|'); lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.42 + i * S * 0.09));
+  ctx.fillStyle = '#ffb46e'; ctx.fillRect(W / 2 - S * 0.08, H * 0.42 + lines.length * S * 0.09 - S * 0.03, S * 0.16, Math.max(2, S * 0.005));
+  try { ctx.letterSpacing = '0px'; } catch (e) {} ctx.restore();
+}

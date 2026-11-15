@@ -1,0 +1,313 @@
+const D_END = tab(TAB0.d, STORY), NOSE = 203, LAKE_FAR = 3150;
+const shoreWav = z => 28 * Math.sin(z / 260 + 0.6) + 10 * Math.sin(z / 90);
+const SHORE_W = CFG.drink ? D_END + NOSE - 8 : 1e12;               // the panther's nose ends just over the water's edge
+const shoreRel = z => SHORE_W - SD + shoreWav(z) - shoreWav(0);     // the shore, as far ahead of the panther as it is now
+const REEDS = (() => { const r = rng(303), a = []; for (let i = 0; i < 34; i++) { const sd = i % 2 ? 1 : -1; a.push({ z: sd * (640 + r() * 3600), df: -14 + r() * 26, n: 5 + Math.floor(r() * 5), h: 60 + r() * 60, seed: 1 + Math.floor(r() * 1e6) }); } return a; })();
+const trailZ = wf => 22 * Math.sin(wf / 700) + 12 * Math.sin(wf / 310 + 1);   // the trail wanders a little around the panther's line
+
+// ---- lands: each has its sky, ground, trees and weather; the road crosses from one into the next ----
+const BIOME_DEF = {
+  stars: 0, ff: 0, snow: 0, petals: 0, rain: 0, petalCol: '230,120,50', cloudA: 0.3, hazeA: 0.5, vigA: 0.35, keep: 1, farKeep: 1, far: 'trees', snowCap: 0,
+  water: ['#7f9cc8', '#4a6494', '#26385e', '#141e38'], glint: '255,255,255', amb: {},
+};
+const BIOMES = {
+  night: { sky: ['#03050f', '#0c1534', '#2a3c66'], stars: 1, orb: { x: 0.2, y: 0.2, r: 0.04, col: '#eef2ff', halo: '190,210,255', ha: 0.4, moon: 1 }, cloud: '140,155,200', cloudA: 0.14,
+    ground: ['#3a4c66', '#1d3328', '#14261b', '#0b170f'], trail: ['96,104,124', '70,76,94'], haze: '70,92,150', hazeA: 0.5, vig: '0,0,12', vigA: 0.6, ff: 1, dust: '120,135,170',
+    water: ['#41588c', '#1c2b56', '#0b1532', '#060c20'], glint: '225,232,255',
+    tree: 'round', trunk: '#26262e', trunkLt: '170,190,255', crowns: ['#0d1f16', '#14291d', '#1f3a2b'], shadow: '0,0,12',
+    dec: { pl: 'rgba(70,100,100,0.18)', pd: 'rgba(0,8,4,0.3)', gd: 'rgba(8,24,14,0.85)', gl: 'rgba(70,104,100,0.6)', st: '#5d6272', stl: 'rgba(200,215,255,0.35)', sts: 'rgba(60,60,50,0.3)', fl: ['#dfe8ff', '#a9c4ff'] },
+    amb: { crick: 1, owl: 1 } },
+  savanna: { sky: ['#4a78b8', '#f0a868', '#ffe2b0'], orb: { x: -0.22, y: 0.07, r: 0.055, col: '#fff4d0', halo: '255,200,120', ha: 0.6 }, cloud: '255,225,200', cloudA: 0.35,
+    ground: ['#ecc896', '#cfa462', '#b48a46', '#8c6830'], trail: ['222,192,142', '196,164,112'], haze: '255,214,170', hazeA: 0.55, vig: '60,30,0', vigA: 0.3, dust: '214,186,138',
+    water: ['#ffd9a8', '#c49a78', '#6a6a80', '#3a4258'], glint: '255,240,210',
+    tree: 'acacia', trunk: '#4a3420', trunkLt: '255,220,170', crowns: ['#4a5622', '#5c6a2c', '#7a8a3c'], shadow: '90,60,20', keep: 0.5, farKeep: 0.45,
+    dec: { pl: 'rgba(240,210,150,0.25)', pd: 'rgba(140,100,40,0.22)', gd: 'rgba(150,118,56,0.9)', gl: 'rgba(236,206,130,0.8)', st: '#a89070', stl: 'rgba(255,245,220,0.5)', sts: 'rgba(90,60,20,0.25)', fl: ['#fff0b0', '#ff9e5e'] },
+    amb: { birds: 1 } },
+  snow: { sky: ['#6f86ab', '#b4c5da', '#e9eff6'], orb: { x: -0.18, y: 0.12, r: 0.035, col: '#ffffff', halo: '255,255,255', ha: 0.35 }, cloud: '255,255,255', cloudA: 0.4,
+    ground: ['#e6edf5', '#dde6ef', '#cbd8e6', '#aebfd3'], trail: ['176,188,206', '150,162,182'], haze: '232,238,246', hazeA: 0.65, vig: '30,45,70', vigA: 0.3, snow: 1, dust: '245,248,255',
+    water: ['#c8d8ea', '#8aa2c0', '#4e6688', '#2c3e5a'],
+    tree: 'pine', snowCap: 1, trunk: '#3a2e28', trunkLt: '255,255,255', crowns: ['#1c3a33', '#26493f', '#f2f6fa'], shadow: '60,80,110',
+    dec: { pl: 'rgba(255,255,255,0.5)', pd: 'rgba(150,170,195,0.25)', gd: 'rgba(90,100,110,0.7)', gl: 'rgba(200,212,225,0.8)', st: '#7b8494', stl: 'rgba(255,255,255,0.9)', sts: 'rgba(90,110,140,0.25)', fl: ['#ffffff', '#dfe9f5'] },
+    amb: { wind: 1 } },
+  desert: { sky: ['#2f6cc0', '#86bbe8', '#f6e0b8'], orb: { x: 0.25, y: 0.08, r: 0.045, col: '#fffbe8', halo: '255,240,200', ha: 0.55 }, cloud: '255,255,255', cloudA: 0.2,
+    ground: ['#f0c88e', '#e0a868', '#cc904e', '#a86c36'], trail: ['238,204,156', '214,174,124'], haze: '252,226,190', hazeA: 0.5, vig: '70,30,0', vigA: 0.28, dust: '230,190,140',
+    water: ['#ffd9a8', '#c49a78', '#6a6a80', '#3a4258'],
+    tree: 'cactus', trunk: '#3f6b3a', trunkLt: '255,240,200', crowns: ['#3f6b3a', '#5a8c50', '#2e5530'], shadow: '120,70,30', keep: 0.55, far: 'mesa', farKeep: 0.22, farCol: ['#b4643c', '#d08a5a', '#8e4a2c'],
+    dec: { pl: 'rgba(255,230,180,0.3)', pd: 'rgba(170,110,60,0.22)', gd: 'rgba(150,120,70,0.8)', gl: 'rgba(210,180,110,0.8)', st: '#b08060', stl: 'rgba(255,235,200,0.6)', sts: 'rgba(120,70,30,0.3)', fl: ['#ff6a4a', '#ffd24a'] },
+    amb: { wind: 0.6, birds: 0.15 } },
+  autumn: { sky: ['#5a84c2', '#c4d6ea', '#f6e2c4'], orb: { x: 0.22, y: 0.1, r: 0.045, col: '#fff6e0', halo: '255,220,170', ha: 0.45 }, cloud: '255,245,235', cloudA: 0.35,
+    ground: ['#c4aa78', '#947a44', '#745e32', '#523f20'], trail: ['184,152,108', '152,122,84'], haze: '245,220,185', hazeA: 0.45, vig: '50,25,0', vigA: 0.3, petals: 0.7, petalCol: '214,110,36', dust: '170,140,100',
+    tree: 'round', trunk: '#3a2a20', trunkLt: '255,220,170', crowns: ['#8e3418', '#c4601c', '#e6a038'], shadow: '60,30,10',
+    dec: { pl: 'rgba(230,140,50,0.28)', pd: 'rgba(90,60,20,0.3)', gd: 'rgba(110,90,40,0.85)', gl: 'rgba(210,160,70,0.7)', st: '#857a6a', stl: 'rgba(255,240,220,0.4)', sts: 'rgba(60,40,20,0.3)', fl: ['#e8a03a', '#c8401e'] },
+    amb: { birds: 0.7, wind: 0.3 } },
+  jungle: { sky: ['#4f8466', '#9fc8a0', '#dcefd0'], orb: { x: 0.18, y: 0.15, r: 0.05, col: '#fbfff0', halo: '230,255,220', ha: 0.3 }, cloud: '235,250,235', cloudA: 0.3,
+    ground: ['#6a9454', '#3e6e30', '#2c5424', '#1a3a18'], trail: ['136,114,78', '108,90,60'], haze: '205,232,205', hazeA: 0.65, vig: '0,25,10', vigA: 0.4, rain: 0.7, dust: '150,170,130',
+    tree: 'jungle', trunk: '#3a3020', trunkLt: '220,255,210', crowns: ['#163e1a', '#21582a', '#3a7a36'], shadow: '0,30,10',
+    dec: { pl: 'rgba(90,150,80,0.25)', pd: 'rgba(0,30,10,0.3)', gd: 'rgba(20,70,24,0.9)', gl: 'rgba(110,170,90,0.75)', st: '#5a6a58', stl: 'rgba(220,255,220,0.35)', sts: 'rgba(0,30,10,0.3)', fl: ['#ff5a7a', '#ffd24a'] },
+    amb: { birds: 1, insects: 1 } },
+  blossom: { sky: ['#6a74c4', '#f2a2b8', '#ffe2cc'], orb: { x: -0.2, y: 0.08, r: 0.05, col: '#fff2e6', halo: '255,180,190', ha: 0.55 }, cloud: '255,220,230', cloudA: 0.4,
+    ground: ['#c2d896', '#92bc66', '#72a04a', '#4e7c32'], trail: ['218,196,174', '190,168,146'], haze: '255,212,222', hazeA: 0.5, vig: '60,10,30', vigA: 0.28, petals: 1, petalCol: '255,182,206', dust: '230,200,200',
+    water: ['#ffd0d8', '#d8a0c0', '#7a78b8', '#3e4478'], glint: '255,240,245',
+    tree: 'blossom', trunk: '#4a3030', trunkLt: '255,220,230', crowns: ['#e07a9e', '#f2a6c0', '#ffd2e2'], shadow: '80,30,50',
+    dec: { pl: 'rgba(255,200,220,0.3)', pd: 'rgba(40,80,30,0.25)', gd: 'rgba(60,110,40,0.85)', gl: 'rgba(170,210,120,0.75)', st: '#9a8f8f', stl: 'rgba(255,240,245,0.5)', sts: 'rgba(60,40,40,0.25)', fl: ['#ffd2e2', '#ffffff'] },
+    amb: { birds: 1 } },
+};
+const rgbOf = c => { if (c[0] === '#') { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; } return c.split(',').map(Number); };
+const col = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const P_COLS = ['haze', 'cloud', 'vig', 'glint', 'dust', 'petalCol'], P_LISTS = ['sky', 'ground', 'water'], P_NUMS = ['hazeA', 'cloudA', 'vigA', 'stars', 'ff', 'snow', 'petals', 'rain'];
+for (const k in BIOMES) {
+  const b = BIOMES[k] = Object.assign({ name: k }, BIOME_DEF, BIOMES[k]);
+  b.c = {}; for (const p of P_COLS) b.c[p] = rgbOf(b[p]); for (const p of P_LISTS) b.c[p] = b[p].map(rgbOf);
+}
+const BSEQ = CFG.biomes.map(([name, tb]) => ({ b: BIOMES[name], x: tb <= 0 ? -1e12 : tab(TAB0.d, tb) }));   // where each land begins on the road
+function biomeAt(x) { let i = 0; while (i + 1 < BSEQ.length && BSEQ[i + 1].x <= x) i++; return BSEQ[i].b; }
+function biomeW(x, hw) {                       // how much of each land shows around road position x (blended over ±hw)
+  let w = BSEQ.map((_, i) => i ? 0 : 1);
+  for (let j = 1; j < BSEQ.length; j++) { const s = smooth(clamp((x - BSEQ[j].x + hw) / (2 * hw))); w = w.map(v => v * (1 - s)); w[j] += s; }
+  return w;
+}
+function palAt(x, hw) {
+  const w = biomeW(x, hw), P = { c: {}, w };
+  for (const p of P_COLS) P.c[p] = [0, 0, 0];
+  for (const p of P_LISTS) P.c[p] = BSEQ[0].b.c[p].map(() => [0, 0, 0]);
+  for (const p of P_NUMS) P[p] = 0;
+  BSEQ.forEach((s, i) => {
+    const k = w[i]; if (!k) return;
+    for (const p of P_COLS) for (let q = 0; q < 3; q++) P.c[p][q] += s.b.c[p][q] * k;
+    for (const p of P_LISTS) s.b.c[p].forEach((cc, j) => { for (let q = 0; q < 3; q++) P.c[p][j][q] += cc[q] * k; });
+    for (const p of P_NUMS) P[p] += s.b[p] * k;
+  });
+  return P;
+}
+let PAL = palAt(0, 1500);
+const groundGrad = (hy, cs) => { const g = ctx.createLinearGradient(0, hy, 0, H); [0, 0.06, 0.45, 1].forEach((s, i) => g.addColorStop(s, col(cs[i]))); return g; };
+
+function drawChase(t, a) {
+  if (a <= 0.001 || RU <= 0.02) return;
+  const px = p => [ox + CAMX + p[0] * sc, oy + CAMY + p[1] * sc];
+  const P3 = (f, z, hg) => px(pr(f, -hg, z));
+  const okAt = (f, z) => CH_D + ((f * RS - z * RC) * CT + 110 * ST) * RU > CH_D * 0.3;   // still in front of the camera
+  const hy = oy + CAMY + (PIV - CH_D * ST / (CT * RU)) * sc;                           // the horizon
+  const van = P3(1e6, 0, 0);                                                          // where the trail meets the horizon
+  ctx.save(); ctx.globalAlpha = a;
+  // sky
+  const sky = ctx.createLinearGradient(0, hy - H * 0.55, 0, hy);
+  sky.addColorStop(0, col(PAL.c.sky[0])); sky.addColorStop(0.6, col(PAL.c.sky[1])); sky.addColorStop(1, col(PAL.c.sky[2]));
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, Math.max(0, hy + 2));
+  if (PAL.stars > 0.02) for (let i = 0; i < 140; i++) {                             // stars
+    const x = hh(i, 2.2) * W, y = hh(i, 6.6) * (hy - 20), tw = 0.55 + 0.45 * Math.sin(t * (1.5 + hh(i, 3)) + i);
+    ctx.fillStyle = `rgba(225,232,255,${0.75 * tw * (0.3 + hh(i, 8)) * PAL.stars})`; ctx.fillRect(x, y, 1.6 + 1.6 * hh(i, 4), 1.6 + 1.6 * hh(i, 4));
+  }
+  let mx = van[0], mw = -1;
+  BSEQ.forEach((s, i) => {                                                           // the sun or the moon of each land, fading across
+    const k = PAL.w[i]; if (k < 0.01) return;
+    const o = s.b.orb, sx = van[0] + W * o.x, sy = hy - H * o.y, sr = S * o.r;
+    if (k > mw) { mw = k; mx = sx; }
+    ctx.globalAlpha = a * k;
+    const halo = ctx.createRadialGradient(sx, sy, sr, sx, sy, sr * 9);
+    halo.addColorStop(0, `rgba(${o.halo},${o.ha})`); halo.addColorStop(1, `rgba(${o.halo},0)`);
+    ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = o.col; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, TAU); ctx.fill();
+    if (o.moon) { ctx.fillStyle = 'rgba(150,160,190,0.35)'; for (const [cx, cy, cr] of [[-0.3, -0.2, 0.22], [0.25, 0.1, 0.16], [-0.05, 0.4, 0.12]]) { ctx.beginPath(); ctx.arc(sx + cx * sr, sy + cy * sr, cr * sr, 0, TAU); ctx.fill(); } }
+  });
+  ctx.globalAlpha = a;
+  ctx.fillStyle = col(PAL.c.cloud, PAL.cloudA);
+  for (const [cx, cy, r] of [[0.12, 0.35, 0.05], [0.5, 0.62, 0.065], [0.8, 0.28, 0.045]]) {
+    const x = ((W * cx + t * 7) % (W * 1.3)) - W * 0.15, y = hy - (hy + 50) * cy, rr = S * r;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.arc(x + rr * 1.3, y - rr * 0.35, rr * 0.8, 0, TAU); ctx.arc(x + rr * 2.3, y, rr * 0.9, 0, TAU); ctx.fill();
+  }
+  // ground: the land we stand in, and the next one sweeping toward us from where it begins
+  ctx.fillStyle = groundGrad(hy, biomeAt(SD - 650).c.ground); ctx.fillRect(0, hy, W, H - hy + 2);
+  for (let j = 1; j < BSEQ.length; j++) {
+    const fj = BSEQ[j].x - SD; if (fj < -650 || fj > 9000) continue;
+    ctx.fillStyle = groundGrad(hy, BSEQ[j].b.c.ground);
+    for (const [off, al] of [[-160, 0.22], [-105, 0.3], [-50, 0.45], [0, 1]]) {
+      const f0 = Math.max(-650, fj + off), p = [P3(f0, -9000, 0), P3(f0, 9000, 0), P3(1e6, 1e6, 0), P3(1e6, -1e6, 0)];
+      ctx.globalAlpha = a * al; ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]); for (const q of p) ctx.lineTo(q[0], q[1]); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = a;
+  }
+  // distant woods along the horizon (the next land's skyline fades in as it comes)
+  const items = [];
+  const tIn = smooth(clamp((RU - 0.1) / 0.3));
+  const fw = biomeW(SD + 3600, 500);
+  BSEQ.forEach((s, i) => {
+    if (fw[i] < 0.01) return;
+    const B = s.b, fk = B.far === 'mesa' ? 'mesa' : null;
+    for (const tr of CH_FAR) { if (hh(tr.seed % 997, 1.7) > B.farKeep) continue; items.push({ d: tr.f * RS - tr.z * RC, draw: () => drawTreeP(P3, tr.f, tr.z, tr, (fk ? 0.9 : 0.55) * tIn * fw[i], B, fk) }); }
+  });
+  items.push({ d: 2500, draw: () => {                                                // haze over the far distance
+    const hz = ctx.createLinearGradient(0, hy - 60 * sc, 0, hy + 120 * sc), hc = PAL.c.haze;
+    hz.addColorStop(0, col(hc, 0)); hz.addColorStop(0.45, col(hc, PAL.hazeA)); hz.addColorStop(1, col(hc, 0));
+    ctx.fillStyle = hz; ctx.fillRect(0, hy - 60 * sc, W, 180 * sc);
+  } });
+  for (const tr of CH_TREES) {
+    const f = (((tr.wf - SD) % CH_SPAN) + CH_SPAN) % CH_SPAN - 700;
+    if (!okAt(f, tr.z) || f > shoreRel(tr.z) - 130) continue;
+    if (f * RS - tr.z * RC < 0 && Math.abs(f * RC + tr.z * RS) < 320) continue;      // never between the camera and the panther
+    const B = biomeAt(SD + f); if (hh(tr.seed % 991, 2.3) > B.keep) continue;
+    items.push({ d: f * RS - tr.z * RC, draw: () => drawTreeP(P3, f, tr.z, tr, tIn * clamp(1 - (f - 1800) / 1100), B) });
+  }
+  // the trail, coloured by the land each stretch of it runs through
+  const L = [], Rr = [], LB = [];
+  for (let i = 0; i <= 64; i++) {
+    const f = -650 + Math.pow(i / 64, 2.2) * 9000;
+    if (!okAt(f, 0)) continue;
+    const zc = trailZ(f + SD), w = 62 + 10 * Math.sin((f + SD) / 230);
+    if (f > shoreRel(zc) - 30) { if (L.length) { L.push(P3(shoreRel(zc) - 30, zc - w, 0)); Rr.push(P3(shoreRel(zc) - 30, zc + w, 0)); LB.push(LB[LB.length - 1]); } break; }
+    L.push(P3(f, zc - w, 0)); Rr.push(P3(f, zc + w, 0)); LB.push(biomeAt(SD + f));
+  }
+  for (let s0 = 0; s0 < L.length - 1;) {
+    let s1 = s0; while (s1 + 1 < L.length && LB[s1 + 1] === LB[s0]) s1++;
+    const e = Math.min(L.length - 1, s1 + 1), poly = L.slice(s0, e + 1).concat(Rr.slice(s0, e + 1).reverse()), tc = LB[s0].trail;
+    ctx.fillStyle = `rgba(${tc[0]},0.35)`; ctx.lineJoin = 'round'; ctx.strokeStyle = `rgba(${tc[0]},0.25)`; ctx.lineWidth = 14 * sc;
+    ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]); for (const p of poly) ctx.lineTo(p[0], p[1]); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = `rgba(${tc[1]},0.6)`; ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]); for (const p of poly) ctx.lineTo(p[0], p[1]); ctx.closePath(); ctx.fill();
+    s0 = s1 + 1;
+  }
+  drawLake(t, P3, mx, hy);
+  if (CFG.drink) for (const rd of REEDS) {                           // rushes along the shore, away from the drinking cats
+    const f = shoreRel(rd.z) + rd.df;
+    if (f < 2900 && okAt(f, rd.z)) items.push({ d: f * RS - rd.z * RC, draw: () => drawReeds(P3, f, rd, t) });
+  }
+  // grass, stones and flowers
+  for (const it of CH_DECOR) {
+    const f = (((it.wf - SD) % CH_SPAN) + CH_SPAN) % CH_SPAN - 700;
+    if (!okAt(f, it.z) || f > 2600 || f > shoreRel(it.z) - 25) continue;
+    const B = biomeAt(SD + f);
+    items.push({ d: f * RS - it.z * RC, draw: () => drawDecorP(P3, f, it, B) });
+  }
+  items.sort((p, q) => q.d - p.d);
+  for (const it of items) it.draw();
+  ctx.restore();
+}
+function drawLake(t, P3, mx, hy) {
+  const s0 = shoreRel(0); if (s0 > LAKE_FAR - 5) return;
+  const zs = [], near = [];
+  for (let i = 0; i <= 240; i++) { const z = -6000 + 12000 * i / 240; zs.push(z); near.push(P3(Math.min(shoreRel(z), LAKE_FAR), z, 0)); }
+  const far = zs.map(z => P3(LAKE_FAR, z, 0)).reverse(), poly = near.concat(far);
+  const yF = far[0][1], yN = P3(s0, 0, 0)[1], grow = smooth(clamp((LAKE_FAR - s0) / 400)), gl = PAL.c.glint;
+  const path = () => { ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]); for (const p of poly) ctx.lineTo(p[0], p[1]); ctx.closePath(); };
+  const bank = zs.map(z => P3(Math.min(shoreRel(z) - 46, LAKE_FAR), z, 0));
+  ctx.fillStyle = 'rgba(40,34,32,0.55)'; ctx.beginPath(); ctx.moveTo(bank[0][0], bank[0][1]);
+  for (const p of bank) ctx.lineTo(p[0], p[1]); for (let i = near.length - 1; i >= 0; i--) ctx.lineTo(near[i][0], near[i][1]); ctx.closePath(); ctx.fill();
+  ctx.save(); path(); ctx.clip();
+  const wg = ctx.createLinearGradient(0, yF, 0, Math.max(yF + 1, yN));
+  [0, 0.18, 0.6, 1].forEach((s, i) => wg.addColorStop(s, col(PAL.c.water[i])));
+  ctx.fillStyle = wg; ctx.fillRect(0, yF - 2, W, Math.max(4, yN - yF + 60 * sc));
+  const mg = ctx.createLinearGradient(mx - W * 0.12, 0, mx + W * 0.12, 0);
+  mg.addColorStop(0, col(gl, 0)); mg.addColorStop(0.5, col(gl, 0.16)); mg.addColorStop(1, col(gl, 0));
+  ctx.fillStyle = mg; ctx.fillRect(mx - W * 0.12, yF, W * 0.24, yN - yF + 60 * sc);
+  for (let j = 0; j < 90; j++) {
+    const v = hh(j, 1.3), f = lerp(LAKE_FAR, s0, Math.pow(v, 0.7)), p = P3(f, 0, 0), q = P3(f, 100, 0), k = Math.abs(q[0] - p[0]) / 100;
+    const al = Math.max(0, Math.sin(t * (2 + 3 * hh(j, 4)) + j * 1.7)) * (0.35 + 0.5 * hh(j, 6)) * grow;
+    if (al < 0.03) continue;
+    const x = mx + (hh(j, 2.9) - 0.5) * W * 0.16 * (0.4 + v), len = (14 + 30 * hh(j, 5)) * k;
+    ctx.strokeStyle = col(gl, al); ctx.lineWidth = Math.max(1, 3 * k);
+    ctx.beginPath(); ctx.moveTo(x - len, p[1]); ctx.lineTo(x + len, p[1]); ctx.stroke();
+  }
+  for (let j = 0; j < 120; j++) {
+    const f = lerp(s0 + 40, LAKE_FAR, Math.pow(hh(j, 8.1), 1.6)), z = (hh(j, 3.3) - 0.5) * 7000 + 30 * Math.sin(t * 0.5 + j);
+    const p = P3(f, z, 0), q = P3(f, z + 90 + 80 * hh(j, 2), 0), al = (0.06 + 0.09 * hh(j, 7)) * (0.6 + 0.4 * Math.sin(t * 1.3 + j)) * grow;
+    ctx.strokeStyle = col(gl, al); ctx.lineWidth = Math.max(0.8, 1.6 * (q[0] - p[0]) / 170);
+    ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle = col(gl, 0.45 * grow); ctx.lineWidth = Math.max(1, 2.2 * sc);
+  ctx.beginPath(); ctx.moveTo(near[0][0], near[0][1]); for (const p of near) ctx.lineTo(p[0], p[1]); ctx.stroke();
+}
+function drawReeds(P3, f, rd, t) {
+  const r = rng(rd.seed), ga = ctx.globalAlpha; ctx.globalAlpha = ga * clamp(1 - (f - 2300) / 600);
+  for (let i = 0; i < rd.n; i++) {
+    const dz = (r() - 0.5) * 70, df = (r() - 0.5) * 30, h = rd.h * (0.6 + 0.5 * r()), lean = (r() - 0.5) * 30 + 8 * Math.sin(t * 0.9 + i + rd.z);
+    const b = P3(f + df, rd.z + dz, 0), tp = P3(f + df, rd.z + dz + lean, h), k = Math.hypot(tp[0] - b[0], tp[1] - b[1]) / (h * sc + 1e-6);
+    ctx.strokeStyle = i % 3 ? '#1e2a16' : '#34442a'; ctx.lineWidth = Math.max(1, 4 * k * sc);
+    ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.quadraticCurveTo(b[0], (b[1] + tp[1]) / 2, tp[0], tp[1]); ctx.stroke();
+    if (r() < 0.4) { ctx.fillStyle = '#3a2a1c'; ctx.beginPath(); ctx.ellipse(tp[0], tp[1] + 6 * k * sc, 3 * k * sc, 9 * k * sc, 0, 0, TAU); ctx.fill(); }   // cattail head
+  }
+  ctx.globalAlpha = ga;
+}
+// trees of every land: round crowns, flat-topped acacias, snowy pines, cacti, jungle giants, blossom trees, and far mesas
+function drawTreeP(P3, f, z, tr, al, B, farK) {
+  if (al <= 0) return;
+  const kind = farK || B.tree, hk = kind === 'cactus' ? 0.5 : kind === 'jungle' ? 1.2 : kind === 'acacia' ? 0.78 : kind === 'mesa' ? 0.5 : kind === 'pine' ? 1.1 : 1;
+  const ht = tr.ht * hk, b = P3(f, z, 0), tp = P3(f, z, ht), k = Math.hypot(tp[0] - b[0], tp[1] - b[1]) / (ht * sc * CT + 1e-6);
+  const ga = ctx.globalAlpha; ctx.globalAlpha = ga * al;
+  const tw = (tr.tw || 26) * k * sc, r = rng(tr.seed), cr = tr.cr * k * sc, C = B.crowns, hgt = b[1] - tp[1];
+  if (kind !== 'mesa') { ctx.fillStyle = `rgba(${B.shadow},0.3)`; ctx.beginPath(); ctx.ellipse(b[0] + tw * 1.5, b[1], tw * (kind === 'acacia' ? 5 : 3), tw * 0.9, 0, 0, TAU); ctx.fill(); }
+  const trunk = (w0, w1, top) => {
+    ctx.fillStyle = B.trunk;
+    ctx.beginPath(); ctx.moveTo(b[0] - w0, b[1]); ctx.lineTo(top[0] - w1, top[1]); ctx.lineTo(top[0] + w1, top[1]); ctx.lineTo(b[0] + w0, b[1]); ctx.fill();
+    ctx.fillStyle = `rgba(${B.trunkLt},0.14)`; ctx.beginPath(); ctx.moveTo(b[0] + w0 * 0.2, b[1]); ctx.lineTo(top[0] + w1 * 0.1, top[1]); ctx.lineTo(top[0] + w1, top[1]); ctx.lineTo(b[0] + w0, b[1]); ctx.fill();
+  };
+  if (kind === 'round' || kind === 'blossom' || kind === 'jungle') {
+    trunk(tw, tw * 0.55, tp);
+    const n = kind === 'jungle' ? 11 : 7, spread = kind === 'jungle' ? 2.3 : 1.6;
+    for (let i = 0; i < n; i++) {
+      const dx = (r() - 0.5) * spread * cr, dy = -(r() * 0.9) * cr, rr = cr * (0.45 + r() * 0.35);
+      ctx.fillStyle = i < n * 0.43 ? C[0] : i < n * 0.72 ? C[1] : C[2];
+      ctx.beginPath(); ctx.arc(tp[0] + dx, tp[1] + dy, rr, 0, TAU); ctx.fill();
+    }
+    if (kind === 'blossom') for (let i = 0; i < 16; i++) { ctx.fillStyle = i % 2 ? '#fff4f8' : C[2]; ctx.beginPath(); ctx.arc(tp[0] + (r() - 0.5) * 1.9 * cr, tp[1] - (r() * 1.2 - 0.1) * cr, cr * 0.07, 0, TAU); ctx.fill(); }
+    if (kind === 'jungle') {                                         // vines hanging from the canopy
+      ctx.strokeStyle = '#123016'; ctx.lineWidth = Math.max(1, tw * 0.16);
+      for (let i = 0; i < 5; i++) { const x = tp[0] + (r() - 0.5) * 1.8 * cr, y = tp[1] + cr * 0.2, l = cr * (0.6 + r() * 0.9); ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + cr * 0.1, y + l / 2, x - cr * 0.05, y + l); ctx.stroke(); }
+    }
+  } else if (kind === 'acacia') {
+    const fork = [lerp(b[0], tp[0], 0.6), lerp(b[1], tp[1], 0.6)];
+    trunk(tw * 0.55, tw * 0.35, fork);
+    ctx.strokeStyle = B.trunk; ctx.lineWidth = tw * 0.45; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(fork[0], fork[1]); ctx.lineTo(tp[0] - cr * 0.8, tp[1] + cr * 0.1); ctx.moveTo(fork[0], fork[1]); ctx.lineTo(tp[0] + cr * 0.9, tp[1]); ctx.stroke();
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = C[i]; ctx.beginPath();
+      ctx.ellipse(tp[0] + (r() - 0.5) * cr * 0.4, tp[1] - i * cr * 0.14, cr * (1.9 - i * 0.35), cr * (0.36 - i * 0.05), 0, 0, TAU); ctx.fill();
+    }
+  } else if (kind === 'pine') {
+    trunk(tw * 0.7, tw * 0.5, [lerp(b[0], tp[0], 0.3), lerp(b[1], tp[1], 0.3)]);
+    for (let i = 0; i < 4; i++) {
+      const y0 = b[1] - hgt * (0.18 + i * 0.19), y1 = b[1] - hgt * (0.5 + i * 0.17), w = cr * (1.15 - i * 0.22), x = lerp(b[0], tp[0], (y0 - b[1]) / -hgt);
+      ctx.fillStyle = C[i % 2]; ctx.beginPath(); ctx.moveTo(x - w, y0); ctx.lineTo(x, y1); ctx.lineTo(x + w, y0); ctx.closePath(); ctx.fill();
+      if (B.snowCap) { const yc = lerp(y1, y0, 0.42); ctx.fillStyle = C[2]; ctx.beginPath(); ctx.moveTo(x - w * 0.42, yc); ctx.lineTo(x, y1); ctx.lineTo(x + w * 0.42, yc); ctx.quadraticCurveTo(x, yc - w * 0.12, x - w * 0.42, yc); ctx.fill(); }
+    }
+  } else if (kind === 'cactus') {
+    ctx.lineCap = 'round'; const lw = tw * 1.5;
+    const arm = (h0, dx, h1) => { const y0 = b[1] - hgt * h0, x1 = b[0] + dx * cr * 0.5; ctx.moveTo(b[0], y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, b[1] - hgt * h1); };
+    for (const [c2, w] of [[C[0], lw], [C[1], lw * 0.35]]) {
+      ctx.strokeStyle = c2; ctx.lineWidth = w; ctx.beginPath();
+      const o = w < lw ? lw * 0.18 : 0; ctx.moveTo(b[0] + o, b[1]); ctx.lineTo(tp[0] + o, tp[1]);
+      arm(0.42, -1, 0.72); arm(0.58, 1, 0.86); ctx.stroke();
+    }
+  } else if (kind === 'mesa') {
+    const w = cr * 3.4, FC = B.farCol;
+    ctx.fillStyle = FC[0]; ctx.beginPath(); ctx.moveTo(b[0] - w, b[1] + 2); ctx.lineTo(b[0] - w * 0.72, b[1] - hgt); ctx.lineTo(b[0] + w * 0.7, b[1] - hgt); ctx.lineTo(b[0] + w, b[1] + 2); ctx.fill();
+    ctx.fillStyle = FC[1]; ctx.fillRect(b[0] - w * 0.72, b[1] - hgt, w * 1.42, hgt * 0.16);
+    ctx.fillStyle = FC[2]; ctx.beginPath(); ctx.moveTo(b[0] + w * 0.25, b[1] + 2); ctx.lineTo(b[0] + w * 0.45, b[1] - hgt); ctx.lineTo(b[0] + w * 0.7, b[1] - hgt); ctx.lineTo(b[0] + w, b[1] + 2); ctx.fill();
+  }
+  ctx.globalAlpha = ga;
+}
+function drawDecorP(P3, f, it, B) {
+  const D = B.dec, p = P3(f, it.z, 0), q = P3(f, it.z, 10), k = Math.max(0.05, (p[1] - q[1]) / (10 * sc * CT + 1e-6)), s = k * sc, sq = Math.max(0.3, ST * 1.4);
+  const ga = ctx.globalAlpha; ctx.globalAlpha = ga * clamp(1 - (f - 1900) / 700);
+  if (it.kind < 0.3) {                                // a soft patch of darker or lighter ground
+    const r = (40 + 80 * it.s) * s;
+    ctx.fillStyle = it.c < 0.45 ? D.pl : D.pd;
+    ctx.beginPath(); ctx.ellipse(p[0], p[1], r, r * sq, 0, 0, TAU); ctx.fill();
+  } else if (it.kind < 0.82) {                        // a grass clump
+    ctx.strokeStyle = it.c < 0.5 ? D.gd : D.gl; ctx.lineWidth = Math.max(0.6, 1.6 * s);
+    ctx.beginPath();
+    for (let k2 = 0; k2 < 5; k2++) { const ang = (-90 + (k2 - 2) * 16 + (it.s - 0.5) * 20) * DEG, l = (9 + 8 * it.c) * s; ctx.moveTo(p[0] + (k2 - 2) * 2 * s, p[1]); ctx.lineTo(p[0] + (k2 - 2) * 2 * s + Math.cos(ang) * l, p[1] + Math.sin(ang) * l); }
+    ctx.stroke();
+  } else if (it.kind < 0.93) {                        // a stone
+    const r = (4 + 6 * it.s) * s;
+    ctx.fillStyle = D.sts; ctx.beginPath(); ctx.ellipse(p[0] + r * 0.5, p[1] + r * 0.2, r * 1.3, r * 0.6, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = D.st; ctx.beginPath(); ctx.ellipse(p[0], p[1] - r * 0.3, r * 1.1, r * 0.75, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = D.stl; ctx.beginPath(); ctx.ellipse(p[0] - r * 0.3, p[1] - r * 0.6, r * 0.5, r * 0.3, 0, 0, TAU); ctx.fill();
+  } else {                                            // little flowers
+    for (let k2 = 0; k2 < 3; k2++) {
+      ctx.fillStyle = D.fl[k2 % 2];
+      ctx.beginPath(); ctx.arc(p[0] + (k2 - 1) * 7 * s, p[1] - (4 + 4 * ((k2 + it.c * 3) % 2)) * s, Math.max(0.8, 2.4 * s), 0, TAU); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = ga;
+}
+

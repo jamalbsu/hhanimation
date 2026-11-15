@@ -1,0 +1,177 @@
+// ---- who we meet on the road (daylight coats) ----
+COATS.lion = { fur: ['#e8c88a', '#d0a868', '#8c6a3c'], far: '#6e5230', rim: 'rgb(255,240,206)', lt: '255,245,222', belly: 'rgba(246,234,208,0.6)', muzzle: 'rgba(248,238,218,0.7)' };
+COATS.bengal = { fur: ['#f2a456', '#da7a30', '#8a4418'], far: '#6a3210', rim: 'rgb(255,228,184)', lt: '255,236,200', belly: 'rgba(252,242,226,0.8)', muzzle: 'rgba(252,244,230,0.85)', mark: '#1d1208' };
+COATS.cheetahDay = { fur: ['#f0d08a', '#dcb466', '#9a7a40'], far: '#7a5c30', rim: 'rgb(255,240,202)', lt: '255,245,222', belly: 'rgba(250,244,228,0.75)', muzzle: 'rgba(250,244,230,0.7)', mark: '#1e150b' };
+COATS.leopardDay = { fur: ['#e6b862', '#cc9442', '#7c5628'], far: '#5e4020', rim: 'rgb(255,236,196)', lt: '255,240,214', belly: 'rgba(250,240,220,0.75)', muzzle: 'rgba(250,242,226,0.7)', mark: '#24180c' };
+COATS.snowleo = { fur: ['#f1f1ec', '#d2d4ce', '#868a84'], far: '#6a6e68', rim: 'rgb(255,255,250)', lt: '255,255,250', belly: 'rgba(255,255,255,0.6)', muzzle: 'rgba(255,255,255,0.6)', mark: '#4a4c4a' };
+COATS.puma = { fur: ['#c8986a', '#a87850', '#5e4028'], far: '#4a301c', rim: 'rgb(255,236,210)', lt: '255,240,220', belly: 'rgba(245,232,215,0.6)', muzzle: 'rgba(248,238,225,0.7)' };
+
+const OUR_IDS = ['T', 'L', 'C'];
+const NAMES = Object.assign({ P: 'Onyx', T: 'Frost', L: 'Silva', C: 'Dash' }, CFG.names || {});
+const VOICE = { P: 150, T: 112, L: 190, C: 235 };
+const TAGC = { P: '#4b4fa8', T: '#58708e', L: '#7a6a9a', C: '#a8782a' };
+const MEETS = (CFG.meets || []).map((m, mi) => {
+  const tb = makeTab(t => keyVal(m.speed, t, spd));
+  const X = tab(TAB0.d, m.tm) + m.gap + tab(tb.d, m.tm);          // the leader's road position is X minus its own distance walked
+  m.members.forEach((c, ci) => {
+    c.id = String.fromCharCode(65 + mi) + ci; NAMES[c.id] = c.name || '';
+    VOICE[c.id] = c.voice || (c.size < 0.7 ? 340 : 170); TAGC[c.id] = c.tag || '#b0562a';
+  });
+  return { ...m, tb, X };
+});
+const fxLead = (m, t) => m.X - tab(m.tb.d, t) - tab(TAB0.d, t);   // how far ahead of the panther the other leader is
+const TALK = CFG.talk || [];
+function talkW(id, t) {                                            // how hard this cat is talking right now
+  let w = 0;
+  for (const l of TALK) if (l.who === id) w = Math.max(w, smooth(clamp((t - l.t) / 0.2)) * (1 - smooth(clamp((t - l.t - l.d * 0.85) / 0.3))));
+  return w;
+}
+// sounds of the story: voices, a huff at each stop, and the land's own ambience
+(() => {
+  for (const l of TALK) {
+    const words = l.text.split(/\s+/).length;
+    EVENTS.push({ t: l.t + 0.12, k: 'talk', d: Math.min(l.d * 0.8, 0.24 * words + 0.3), f: VOICE[l.who] || 170, n: Math.max(2, Math.round(words * 1.3)), pan: l.who.length > 1 ? 0.15 : -0.05 });
+  }
+  for (let i = 1; i < TAB_N; i++) if (TAB0.v[i] < 5 && TAB0.v[i - 1] >= 5) EVENTS.push({ t: i * TAB_DT + 0.1, k: 'huff' });
+  for (let i = 0, t = 0.2; t < STORY - 0.8; i++, t += 0.21) {
+    const w = biomeW(tab(TAB0.d, t) + 800, 900), A = {};
+    BSEQ.forEach((s, j) => { for (const k in s.b.amb) A[k] = (A[k] || 0) + s.b.amb[k] * w[j]; });
+    if ((A.crick || 0) > 0.05 && i % 2 === 0) EVENTS.push({ t, k: 'cricket', v: A.crick, pan: Math.sin(i * 1.7) * 0.8 });
+    if ((A.birds || 0) > 0.05 && hh(i, 3.1) < 0.16 * A.birds) EVENTS.push({ t, k: 'tweet', v: A.birds, f: 2600 + 1900 * hh(i, 4.2), pan: (hh(i, 5.3) - 0.5) * 1.4 });
+    if ((A.wind || 0) > 0.05 && i % 13 === 0) EVENTS.push({ t, k: 'wind', v: A.wind });
+    if ((A.insects || 0) > 0.05 && i % 9 === 4) EVENTS.push({ t, k: 'buzz', v: A.insects, pan: Math.sin(i) * 0.7 });
+    if ((A.owl || 0) > 0.5 && i % 42 === 20) EVENTS.push({ t, k: 'owl' });
+  }
+})();
+
+let AX = 0, AY = 0, AK = 1;   // where the animal being drawn sits relative to the panther (screen body units), and its size
+function placeAnimal(fx, z, size) {
+  const o = pr(0, 0, 0), p = pr(fx, 0, z), side = 1 - RU;
+  AX = p[0] - o[0];
+  AY = p[1] - o[1] + side * (z < 0 ? z * 0.06 : z * 0.55);
+  AK = size * camK(fx, PIV, z) / camK(0, PIV, 0) * (1 + side * z * 0.0009);
+}
+let HEADS = {};               // screen position over each cat's head, for its speech bubble
+function headAt(id) { const q = pr(150, -205, 0); HEADS[id] = [ox + CAMX + (AX + q[0] * AK) * sc, oy + CAMY + (AY + q[1] * AK) * sc, AK]; }
+function drawPack(t) {
+  HEADS = {};
+  let pb = 0;                                                    // our pack opens up while the others come through
+  for (const m of MEETS) { const fl = fxLead(m, STL); pb = Math.max(pb, clamp((m.gap - fl) / 220) * clamp((fl + 700) / 300)); }
+  const spread = 1 + 0.3 * pb, tau = SD / 450;                   // weaving follows the road walked, so it holds still when the pack stops
+  const ents = [{ fx: 0, z: 0, me: true, id: 'P' }];
+  const settle = CFG.drink ? smooth(clamp((STL - CFG.drink.settle[0]) / (CFG.drink.settle[1] - CFG.drink.settle[0]))) : 0;
+  OURS.forEach((a, i) => {
+    const fxEnd = NOSE + shoreWav(a.zEnd) - shoreWav(0) - NOSE * a.size;   // its nose just over the water once everyone has stopped
+    ents.push({ a, fa: 1, lag: a.lag, ph: a.ph * (1 - settle), id: OUR_IDS[i],
+      fx: lerp(a.fx + 40 * Math.sin(tau * 0.8 + i * 2.1), fxEnd, settle), z: lerp(a.z * spread + 10 * Math.sin(tau * 0.6 + i), a.zEnd, settle) });
+  });
+  // rings spreading on the water from each drinking mouth
+  const P3w = (f, z) => [ox + CAMX + pr(f, 0, z)[0] * sc, oy + CAMY + pr(f, 0, z)[1] * sc];
+  if (CFG.drink) for (const e of ents) {
+    const lag = e.me ? 0 : e.lag, size = e.me ? 1 : e.a.size, dr = drinkAmt(STL, lag); if (dr < 0.5) continue;
+    const mf = e.fx + NOSE * size;
+    for (let k = 0; k < 3; k++) {
+      const age = frac((STL - DRINK0 - lag) * 0.5 + k / 3), rad = (8 + 200 * age) * size, al = 0.75 * (1 - age) * (dr - 0.5) * 2;
+      ctx.strokeStyle = col(PAL.c.glint, al); ctx.lineWidth = Math.max(1.5, 3 * sc);
+      ctx.beginPath();
+      for (let j = 0; j <= 24; j++) { const th = (-95 + 190 * j / 24) * DEG, p = P3w(mf + rad * Math.cos(th), e.z + rad * Math.sin(th)); j ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+      ctx.stroke();
+    }
+  }
+  // the others: they come up the road, stop face to face with us, talk, then step aside and walk on past
+  for (const m of MEETS) {
+    const fl = fxLead(m, STL), slide = smooth(clamp((m.gap - 15 - fl) / (m.gap * 0.75))), mt = tab(m.tb.d, STL) / 450;
+    m.members.forEach((c, ci) => {
+      const fx = fl + c.dfx; if (fx < -520 || fx > 5200) return;
+      const z = lerp(c.zMeet, c.zPass, slide) + 9 * Math.sin(mt * 1.1 + ci * 1.9);
+      ents.push({ a: { size: c.size, ph: c.ph || 0, coat: COATS[c.coat], marks: c.marks || null }, fa: -1, fx, z, id: c.id, tb: m.tb });
+    });
+  }
+  for (const e of ents) e.d = e.fx * RS - e.z * RC;              // further from the camera first
+  ents.sort((p, q) => q.d - p.d);
+  for (const e of ents) {
+    TALKW = talkW(e.id, STL);
+    if (e.me) { FA = 1; AX = 0; AY = 0; AK = 1; COAT = COATS.panther; MARKS = null; DLAG = 0; TAB = TAB0; drawPanther(t); headAt(e.id); continue; }
+    FA = 1; placeAnimal(e.fx, e.z, e.a.size);
+    if (AK > 2.0 || Math.abs(AX) > 1000) continue;                  // off screen, or right at the camera
+    FA = e.fa; COAT = e.a.coat; MARKS = e.a.marks; DLAG = e.lag || 0; TAB = e.tb || TAB0;
+    drawPanther(t, e.ph === undefined ? e.a.ph : e.ph); headAt(e.id);
+    TAB = TAB0;
+  }
+  FA = 1; AX = 0; AY = 0; AK = 1; COAT = COATS.panther; MARKS = null; DLAG = 0; TALKW = 0; TAB = TAB0;
+}
+// speech bubbles: pop up over the speaker, the words typing in
+function wrapText(text, maxW) {
+  const out = []; let line = '';
+  for (const w of text.split(' ')) { const tryL = line ? line + ' ' + w : w; if (ctx.measureText(tryL).width > maxW && line) { out.push(line); line = w; } else line = tryL; }
+  if (line) out.push(line);
+  return out;
+}
+function drawBubbles() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (const l of TALK) {
+    const s = STL - l.t; if (s < 0 || s > l.d) continue;
+    const hp = HEADS[l.who]; if (!hp) continue;
+    const pop = smooth(clamp(s / 0.22)), al = pop * (1 - smooth(clamp((s - l.d + 0.3) / 0.3)));
+    const fs = Math.round(S * 0.044), nfs = Math.round(S * 0.03), pad = fs * 0.55;
+    ctx.font = `600 ${fs}px "Segoe UI", system-ui, sans-serif`;
+    const lines = wrapText(l.text, W * 0.64);
+    let bw = 0; for (const ln of lines) bw = Math.max(bw, ctx.measureText(ln).width);
+    const name = NAMES[l.who] || '';
+    ctx.font = `700 ${nfs}px "Segoe UI", system-ui, sans-serif`; bw = Math.max(bw, ctx.measureText(name).width);
+    bw += pad * 2; const bh = lines.length * fs * 1.22 + pad * 1.7 + nfs * 1.25;
+    const ax = hp[0], ay = hp[1] - 24 * sc * hp[2];
+    const x = clamp(ax - bw / 2, W * 0.04, W * 0.96 - bw), y = Math.max(H * 0.06, ay - bh - fs * 1.1);
+    ctx.save(); ctx.globalAlpha = al;
+    ctx.translate(ax, y + bh); ctx.scale(0.8 + 0.2 * pop, 0.8 + 0.2 * pop); ctx.translate(-ax, -(y + bh));
+    ctx.shadowColor = 'rgba(0,0,0,0.28)'; ctx.shadowBlur = fs * 0.5; ctx.shadowOffsetY = fs * 0.12;
+    ctx.fillStyle = 'rgba(255,253,248,0.95)';
+    ctx.beginPath(); ctx.roundRect(x, y, bw, bh, fs * 0.55); ctx.fill();
+    const tx = clamp(ax, x + fs, x + bw - fs), tipY = Math.min(ay, y + bh + fs * 1.0);   // the tail points down at the speaker
+    ctx.beginPath(); ctx.moveTo(tx - fs * 0.45, y + bh - 1); ctx.lineTo(lerp(tx, ax, 0.6), tipY); ctx.lineTo(tx + fs * 0.45, y + bh - 1); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = TAGC[l.who] || '#555'; ctx.textBaseline = 'top';
+    ctx.font = `700 ${nfs}px "Segoe UI", system-ui, sans-serif`; ctx.fillText(name.toUpperCase(), x + pad, y + pad * 0.75);
+    ctx.font = `600 ${fs}px "Segoe UI", system-ui, sans-serif`; ctx.fillStyle = '#1d1f2e';
+    let n = Math.ceil(l.text.length * clamp(s / Math.min(l.d * 0.55, 0.045 * l.text.length + 0.15)));
+    lines.forEach((ln, i) => { if (n <= 0) return; ctx.fillText(ln.slice(0, n), x + pad, y + pad * 0.75 + nfs * 1.25 + i * fs * 1.22); n -= ln.length + 1; });
+    ctx.restore();
+  }
+}
+// weather of the land we are in: fireflies, snow, falling petals or leaves, rain
+function drawWeather(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (PAL.ff > 0.02) { ctx.globalAlpha = PAL.ff; drawFireflies(t); ctx.globalAlpha = 1; }
+  if (PAL.snow > 0.02) {
+    ctx.fillStyle = `rgba(255,255,255,${0.85 * PAL.snow})`;
+    for (let i = 0; i < 170; i++) {
+      const r = (1.6 + 3.6 * hh(i, 4.1)) * sc, x = ((hh(i, 1.1) * W + Math.sin(t * 0.7 + i) * 30 * sc + t * 25 * sc) % W + W) % W, y = (hh(i, 2.3) * H + t * (70 + 110 * hh(i, 3.2)) * sc) % H;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    }
+  }
+  if (PAL.petals > 0.02) {
+    ctx.fillStyle = col(PAL.c.petalCol, 0.85 * PAL.petals);
+    for (let i = 0; i < 60; i++) {
+      const x = ((hh(i, 5.1) * W + t * (30 + 50 * hh(i, 6.2)) * sc + Math.sin(t * 1.3 + i) * 40 * sc) % W + W) % W, y = (hh(i, 7.7) * H + t * (60 + 70 * hh(i, 8.3)) * sc) % H;
+      ctx.beginPath(); ctx.ellipse(x, y, 8 * sc, 3.6 * sc, t * (1 + 2 * hh(i, 9.4)) + i, 0, TAU); ctx.fill();
+    }
+  }
+  if (PAL.rain > 0.02) {
+    ctx.strokeStyle = `rgba(225,238,255,${0.32 * PAL.rain})`; ctx.lineWidth = 1.6 * sc;
+    ctx.beginPath();
+    for (let i = 0; i < 130; i++) {
+      const x = ((hh(i, 3.3) * W + t * 90 * sc) % W + W) % W, y = (hh(i, 4.4) * H + t * 1500 * sc * (0.8 + 0.4 * hh(i, 5.5))) % H;
+      ctx.moveTo(x, y); ctx.lineTo(x - 6 * sc, y + 38 * sc);
+    }
+    ctx.stroke();
+  }
+}
+function drawTitle() {                                             // the story's name over the first seconds
+  const a = smooth(clamp((STL - 0.6) / 0.6)) * (1 - smooth(clamp((STL - 3.6) / 0.8))); if (a <= 0) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = S * 0.02;
+  ctx.fillStyle = '#ffffff'; ctx.font = `700 ${Math.round(S * 0.034)}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillText((CFG.series || 'THE PANTHER PACK').toUpperCase(), W / 2, H * 0.16);
+  ctx.font = `800 ${Math.round(S * 0.075)}px "Segoe UI", system-ui, sans-serif`; ctx.fillText(CFG.title, W / 2, H * 0.16 + S * 0.075);
+  ctx.restore();
+}

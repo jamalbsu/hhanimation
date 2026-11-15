@@ -1,0 +1,177 @@
+// ---- JOY: happy episodes — an original cheerful score, butterflies, birds, rainbows, hearts, sparkles and confetti ----
+const MUSIC = CFG.music || null;
+const midiF = m => 440 * Math.pow(2, (m - 69) / 12);
+(() => {                                                       // compose the score from the episode's seed
+  if (!MUSIC) return;
+  for (let i = EVENTS.length - 1; i >= 0; i--) if (['pant', 'huff', 'sigh', 'breath', 'push'].includes(EVENTS[i].k)) EVENTS.splice(i, 1);
+  const r = rng(MUSIC.seed || 7), beat = 60 / MUSIC.bpm, bar = beat * 4, root = MUSIC.root;
+  const MAJ = [0, 2, 4, 5, 7, 9, 11];
+  const PROGS = { pop: [0, 4, 5, 3], doo: [0, 5, 3, 4], lift: [3, 4, 0, 0], sunny: [0, 3, 4, 3], dream: [0, 5, 1, 4] };
+  const prog = PROGS[MUSIC.prog || 'pop'];
+  const deg = (d, oct = 0) => root + MAJ[((d % 7) + 7) % 7] + 12 * (Math.floor(d / 7) + oct);
+  const triad = d => [deg(d), deg(d + 2), deg(d + 4)];
+  const RHY = [[0, 1, 1.5, 2, 3], [0, 0.5, 1, 2, 2.5, 3], [0, 1, 2, 2.5, 3, 3.5], [0, 1.5, 2, 3], [0, 0.5, 1, 1.5, 2, 3], [0, 1, 1.5, 2.5, 3]];
+  function motif(chA, chB, end) {                              // a two-bar phrase that leans on the chord tones
+    const notes = [];
+    [[0, chA], [1, chB]].forEach(([bi, ch]) => {
+      const rh = RHY[Math.floor(r() * RHY.length)]; let cur = ch + [0, 2, 4][Math.floor(r() * 3)];
+      rh.forEach((b, k) => {
+        if (k > 0) cur += r() < 0.7 ? [-1, 1, 1, 2, -2, -1][Math.floor(r() * 6)] : 0;
+        cur = Math.max(-1, Math.min(9, cur));
+        let d = cur; const m = ((d % 7) + 7) % 7; if ((m === 3 || m === 6) && b % 1 === 0) d += 1;   // strong beats avoid the tense notes
+        if (end && bi === 1 && k === rh.length - 1) d = ch;                                          // phrases come home
+        const nx = k + 1 < rh.length ? rh[k + 1] : 4; notes.push({ b: bi * 4 + b, d, len: Math.min(nx - b, 1.5) });
+      });
+    });
+    return notes;
+  }
+  const A = motif(prog[0], prog[1]), A2 = motif(prog[2], prog[3], true), B = motif(prog[0], prog[1]), B2 = motif(prog[2], prog[3], true);
+  const form = [[A, A2], [A, A2], [B, B2], [A, A2]];
+  const push = (t, inst, m, len, v) => { if (t < STORY - 0.08) EVENTS.push({ t, k: 'note', inst, m, len, v }); };
+  const nBars = Math.ceil(STORY / bar) + 1;
+  for (let b = 0; b < nBars; b++) {
+    const t0 = b * bar, ch = prog[b % 4], tri = triad(ch), sec = Math.floor(b / 4) % 4, half = (b % 4) < 2 ? 0 : 1, intro = b === 0;
+    tri.forEach(m => push(t0, 'pad', m, bar * 1.02, 1));
+    if (!intro) { push(t0, 'bass', deg(ch, -2), beat * 1.4, 1); push(t0 + beat * 1.5, 'bass', deg(ch, -2), beat * 0.45, 0.7); push(t0 + beat * 2, 'bass', deg(ch + 4, -2), beat * 1.4, 0.9); push(t0 + beat * 3.5, 'bass', deg(ch + 2, -2), beat * 0.45, 0.7); }
+    const arp = MUSIC.arpPat || [0, 1, 2, 1, 2, 0, 1, 2];
+    for (let k = 0; k < 8; k++) push(t0 + k * beat / 2, MUSIC.arp || 'pluck', tri[arp[k]] + 12, beat * 0.5, k % 2 ? 0.65 : 1);
+    if (!intro) { const ph = form[sec][half]; for (const n of ph) if (Math.floor(n.b / 4) === b % 2) push(t0 + (n.b % 4) * beat, MUSIC.lead || 'bell', deg(n.d, 1), n.len * beat, 1); }
+    if (!intro || MUSIC.drumsIntro) for (let k = 0; k < 8; k++) {
+      const tt = t0 + k * beat / 2;
+      if (k === 0 || k === 4 || (k === 5 && b % 2)) push(tt, 'kick', 0, 0, MUSIC.soft ? 0.6 : 1);
+      if (k === 2 || k === 6) push(tt, 'clap', 0, 0, MUSIC.soft ? 0.5 : 1);
+      push(tt, MUSIC.bells ? 'jingle' : 'shaker', 0, 0, k % 2 ? 0.6 : 1);
+    }
+  }
+  for (const p of CFG.pops || []) [0, 4, 7, 12].forEach((s, i) => push(p.t + i * 0.06, 'bell', root + 24 + s, 0.4, 0.55));   // a sparkle up the scale with each word
+})();
+function noteSnd(at, e) {
+  const f = midiF(e.m), v = Math.max(0.001, e.v * (MUSIC.vol || 1)), out = ac.createGain();
+  let head = out;
+  if (e.inst === 'pad' || e.inst === 'bass' || e.inst === 'flute') { const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = e.inst === 'bass' ? 700 : e.inst === 'pad' ? 1500 : 3200; lp.connect(out); head = lp; }
+  out.connect(master); const w = ac.createGain(); w.gain.value = e.inst === 'bass' ? 0.05 : 0.35; out.connect(w); w.connect(wet);
+  const tone = (type, fr, peak, att, hold, rel, det) => {
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = fr; if (det) o.detune.value = det;
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(peak, at + att);
+    if (hold > 0) g.gain.setValueAtTime(peak, at + att + hold);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + att + hold + rel);
+    o.connect(g); g.connect(head); o.start(at); o.stop(at + att + hold + rel + 0.05); return o;
+  };
+  switch (e.inst) {
+    case 'pad': tone('triangle', f, 0.02 * v, 0.25, e.len * 0.6, 0.6, -7); tone('triangle', f, 0.02 * v, 0.25, e.len * 0.6, 0.6, 7); break;
+    case 'bass': tone('triangle', f, 0.15 * v, 0.008, e.len * 0.5, 0.25); tone('sine', f, 0.11 * v, 0.008, e.len * 0.5, 0.25); break;
+    case 'pluck': tone('sine', f, 0.06 * v, 0.004, 0, 0.3); tone('sine', f * 4, 0.01 * v, 0.002, 0, 0.07); break;
+    case 'harp': tone('triangle', f, 0.045 * v, 0.004, 0, 0.6); tone('sine', f * 2, 0.012 * v, 0.003, 0, 0.3); break;
+    case 'bell': tone('sine', f, 0.075 * v, 0.004, 0, 0.9); tone('sine', f * 2.756, 0.018 * v, 0.003, 0, 0.35); tone('sine', f * 5.4, 0.007 * v, 0.002, 0, 0.15); break;
+    case 'flute': {
+      const hold = Math.max(0, e.len - 0.12), o = tone('triangle', f, 0.065 * v, 0.05, hold, 0.18);
+      const l = ac.createOscillator(), lg = ac.createGain(); l.frequency.value = 5.5; lg.gain.value = f * 0.006; l.connect(lg); lg.connect(o.frequency); l.start(at); l.stop(at + e.len + 0.3);
+      tone('sine', f * 2, 0.01 * v, 0.05, hold, 0.15); break;
+    }
+    case 'whistle': { const o = tone('sine', f, 0.055 * v, 0.03, Math.max(0, e.len - 0.1), 0.12); o.frequency.setValueAtTime(f * 0.96, at); o.frequency.exponentialRampToValueAtTime(f, at + 0.06); break; }
+    case 'kick': { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(130, at); o.frequency.exponentialRampToValueAtTime(48, at + 0.12); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.2 * v, at + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.22); o.connect(g); g.connect(master); o.start(at); o.stop(at + 0.25); break; }
+    case 'clap': noise(at, 0.14, 'bandpass', 1600, 0.9, 0.05 * v, 0, 0.3); noise(at + 0.012, 0.1, 'bandpass', 2200, 1, 0.03 * v, 0, 0.3); break;
+    case 'shaker': noise(at, 0.05, 'highpass', 7000, 0.7, 0.014 * v, 0.2, 0.05); break;
+    case 'jingle': noise(at, 0.09, 'bandpass', 7500, 3, 0.03 * v, 0.2, 0.2); tone('sine', 5200 + 300 * Math.sin(at * 13), 0.006 * v, 0.002, 0, 0.12); break;
+  }
+}
+
+// ---- happy things to look at ----
+const PASTEL = ['#ffd23f', '#ff6fae', '#5ce1e6', '#b388ff', '#7ee081', '#ff9f43'];
+function heart(x, y, s, c) {
+  ctx.beginPath(); ctx.moveTo(x, y + s * 0.38);
+  ctx.bezierCurveTo(x - s * 0.95, y - s * 0.2, x - s * 0.48, y - s * 0.95, x, y - s * 0.38);
+  ctx.bezierCurveTo(x + s * 0.48, y - s * 0.95, x + s * 0.95, y - s * 0.2, x, y + s * 0.38); ctx.closePath();
+  ctx.fillStyle = c; ctx.fill(); ctx.lineWidth = Math.max(1, s * 0.1); ctx.strokeStyle = INK; ctx.stroke();
+}
+function star4(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x, y - r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r); ctx.quadraticCurveTo(x, y, x - r, y); ctx.quadraticCurveTo(x, y, x, y - r); ctx.fill(); }
+function cloudBubble(x, y, rx, ry, fill) {
+  const C = [[0, 0, rx * 0.86, ry * 0.8]];
+  for (let i = 0; i < 11; i++) { const a = TAU * i / 11 + 0.2; C.push([Math.cos(a) * rx * 0.78, Math.sin(a) * ry * 0.62, ry * (0.42 + 0.08 * Math.sin(i * 2.3)), ry * (0.42 + 0.08 * Math.sin(i * 2.3))]); }
+  const path = () => { ctx.beginPath(); for (const [cx, cy, a, b] of C) { ctx.moveTo(x + cx + a, y + cy); ctx.ellipse(x + cx, y + cy, a, b, 0, 0, TAU); } };
+  ctx.save(); ctx.translate(S * 0.012, S * 0.014); path(); ctx.fillStyle = INK; ctx.fill(); ctx.restore();
+  path(); ctx.lineWidth = S * 0.014; ctx.strokeStyle = INK; ctx.stroke(); ctx.fillStyle = fill; ctx.fill();
+}
+function drawRainbow() {
+  const k = kv(CFG.rainbow, 0); if (k <= 0.01) return;
+  const cx = W * (CFG.rainbowX || 0.62), cy = H * 0.6, R0 = S * 0.78, bw = S * 0.028;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H * 0.5); ctx.clip(); ctx.globalAlpha = 0.42 * k; ctx.lineWidth = bw;
+  ['#ff4d4d', '#ff9f43', '#ffe14d', '#7ee081', '#4dc3ff', '#6c7bff', '#b388ff'].forEach((c, i) => { ctx.strokeStyle = c; ctx.beginPath(); ctx.arc(cx, cy, R0 - i * bw, Math.PI, TAU); ctx.stroke(); });
+  ctx.restore();
+}
+function drawBirds(t) {
+  const n = CFG.birds || 0; if (!n) return;
+  ctx.strokeStyle = CFG.birdCol || 'rgba(50,36,50,0.75)'; ctx.lineWidth = Math.max(1.5, S * 0.0035); ctx.lineCap = 'round';
+  for (let i = 0; i < n; i++) {
+    const x = ((hh(i, 2) * 1.4 + t * (0.03 + 0.02 * hh(i, 1))) % 1.4 - 0.2) * W, y = H * (0.1 + 0.16 * hh(i, 3)) + Math.sin(t * 1.3 + i) * S * 0.012, s = S * (0.012 + 0.01 * hh(i, 4)), fl = Math.sin(t * 9 + i * 2);
+    ctx.beginPath(); ctx.moveTo(x - s, y - s * 0.45 * fl); ctx.quadraticCurveTo(x - s * 0.4, y - s * 0.5, x, y); ctx.quadraticCurveTo(x + s * 0.4, y - s * 0.5, x + s, y - s * 0.45 * fl); ctx.stroke();
+  }
+}
+function butterflies(t, front) {
+  const n = CFG.butterflies || 0;
+  for (let i = 0; i < n; i++) {
+    const f = 380 * Math.sin(t * 0.33 + i * 2.1) + 120 * Math.sin(t * 1.1 + i) + (hh(i, 1.1) - 0.3) * 900, z = (hh(i, 2.2) - 0.5) * 1500 + 160 * Math.sin(t * 0.5 + i * 1.7), hg = 150 + 230 * hh(i, 3.3) + 70 * Math.sin(t * 1.7 + i * 2.3);
+    if (!hzVis(f, z) || (hzDepth(f, z) < 0) !== front) continue;
+    const p = P3s(f, hg, z), s = 15 * Math.max(0.35, hzK(f, hg, z)), flap = Math.abs(Math.sin(t * 13 + i * 3)), c = PASTEL[i % PASTEL.length];
+    ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(0.35 * Math.sin(t * 2 + i));
+    for (const sg of [-1, 1]) {
+      ctx.save(); ctx.scale(sg * (0.2 + 0.8 * flap), 1); ctx.fillStyle = c; ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, s * 0.12);
+      ctx.beginPath(); ctx.ellipse(s * 0.6, -s * 0.35, s * 0.62, s * 0.48, -0.5, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(s * 0.45, s * 0.38, s * 0.42, s * 0.32, 0.5, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    ctx.fillStyle = INK; ctx.fillRect(-s * 0.08, -s * 0.55, s * 0.16, s * 1.05); ctx.restore();
+  }
+}
+function catSpots() { const P = [{ f: 0, z: 0, k: 0.95 }]; OURS.forEach(a => P.push({ f: a.fx, z: a.z, k: a.size })); return P; }
+function drawHearts(t) {                                       // hearts float up from the cats
+  const cats = catSpots();
+  for (const [t0, ci] of (CFG.hearts || []).flatMap(t0 => [0, 1, 2, 3].map(ci => [t0 + ci * 0.18, ci]))) {
+    const d = STL - t0; if (d < 0 || d > 1.8) continue; const c = cats[ci % cats.length]; if (!hzVis(c.f, c.z)) continue;
+    const p = P3s(c.f + 60, 230 * c.k + d * 180, c.z), s = S * 0.035 * (0.6 + 0.4 * smooth(clamp(d / 0.3))) * (1 - 0.3 * d / 1.8);
+    ctx.globalAlpha = 1 - smooth(clamp((d - 1.3) / 0.5)); heart(p[0] + Math.sin(d * 5 + ci) * S * 0.012, p[1], s, PASTEL[(ci + 1) % PASTEL.length]); ctx.globalAlpha = 1;
+  }
+}
+function drawSparkles(t) {
+  const k = kv(CFG.sparkle, 0); if (k <= 0.01) return;
+  const n = Math.round(28 * k);
+  for (let i = 0; i < n; i++) {
+    const ph = frac(t * 0.8 + hh(i, 1.7)), f = (hh(i, 2.7) - 0.4) * 900, z = (hh(i, 3.7) - 0.5) * 900, hg = 40 + 360 * hh(i, 4.7);
+    if (!hzVis(f, z)) continue; const p = P3s(f, hg, z), r = S * 0.016 * Math.sin(Math.PI * ph) * (0.6 + 0.6 * hh(i, 5.7));
+    if (r > 0.5) star4(p[0], p[1], r, i % 3 ? 'rgba(255,255,240,0.95)' : PASTEL[i % PASTEL.length]);
+  }
+}
+function drawConfetti() {
+  let k = kv(CFG.confetti, 0); const s = STL - ENDAT; if (s > 0) k = Math.max(k, smooth(clamp(s / 0.3)));
+  if (k <= 0.01) return;
+  for (let i = 0; i < 120; i++) {
+    const sp = 0.25 + 0.2 * hh(i, 1.3), y = ((hh(i, 2.3) + STL * sp) % 1.15 - 0.1) * H, x = hh(i, 3.3) * W + Math.sin(STL * 2 + i) * S * 0.03, a = STL * (3 + 4 * hh(i, 4.3)) + i;
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(x, y); ctx.rotate(a); ctx.scale(1, Math.cos(a * 1.7)); ctx.fillStyle = PASTEL[i % PASTEL.length]; ctx.fillRect(-S * 0.008, -S * 0.004, S * 0.016, S * 0.008); ctx.restore();
+  }
+}
+function drawJoyHud() {
+  const a = smooth(clamp((STL - 2.4) / 0.4)) * (1 - smooth(clamp((STL - ENDAT) / 0.25))); if (a <= 0) return;
+  const bar = H * 0.035, x0 = S * 0.05, y0 = H - bar - S * 0.06, joy = kv(CFG.joy, 5), hs = S * 0.052;
+  ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'left'; ctx.lineJoin = 'round';
+  ctx.font = FONT(S * 0.036); ctx.textBaseline = 'alphabetic'; ctx.lineWidth = S * 0.009; ctx.strokeStyle = INK;
+  ctx.strokeText('HAPPY METER', x0, y0 - hs * 0.95); ctx.fillStyle = '#fff'; ctx.fillText('HAPPY METER', x0, y0 - hs * 0.95);
+  for (let i = 0; i < 5; i++) { const fill = clamp(joy - i), pulse = 1 + 0.14 * fill * Math.max(0, Math.sin(STL * 6 - i * 0.7)); heart(x0 + hs * 0.6 + i * hs * 1.25, y0 - hs * 0.15, hs * pulse, fill > 0.5 ? ACC[1] : 'rgba(255,255,255,0.4)'); }
+  const by = bar + S * 0.035, fs = S * 0.034;
+  ctx.font = FONT(fs); const w1 = ctx.measureText('PANTHERA').width, w2 = ctx.measureText('EP.' + CFG.ep).width;
+  ctx.translate(x0, by); ctx.transform(1, 0, -0.18, 1, 0, 0); ctx.textBaseline = 'middle';
+  ctx.fillStyle = INK; ctx.fillRect(0, -fs * 0.72, w1 + fs * 0.7, fs * 1.44); ctx.fillStyle = '#fff'; ctx.fillText('PANTHERA', fs * 0.35, 0);
+  ctx.fillStyle = ACC[1]; ctx.fillRect(w1 + fs * 0.7, -fs * 0.72, w2 + fs * 0.7, fs * 1.44); ctx.fillStyle = '#fff'; ctx.fillText('EP.' + CFG.ep, w1 + fs * 1.05, 0);
+  ctx.restore();
+}
+function fireflies(t, front) {                                 // glowing fireflies drifting around the pack
+  const n = CFG.fireflies || 0; if (!n) return; ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < n; i++) {
+    const f = (hh(i, 1.9) - 0.4) * 2400 + 120 * Math.sin(t * 0.4 + i), z = (hh(i, 2.9) - 0.5) * 2600 + 90 * Math.sin(t * 0.6 + i * 1.3), hg = 40 + 380 * hh(i, 3.9) + 50 * Math.sin(t * 0.9 + i * 2.1);
+    if (!hzVis(f, z) || (hzDepth(f, z) < 0) !== front) continue;
+    const p = P3s(f, hg, z), k = Math.max(0.4, hzK(f, hg, z)), blink = 0.35 + 0.65 * Math.max(0, Math.sin(t * (1.5 + hh(i, 4.9)) + i * 2.7)), r = 22 * k;
+    const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r); g.addColorStop(0, 'rgba(255,250,170,' + (0.95 * blink) + ')'); g.addColorStop(0.25, 'rgba(220,255,120,' + (0.45 * blink) + ')'); g.addColorStop(1, 'rgba(160,255,80,0)');
+    ctx.fillStyle = g; ctx.fillRect(p[0] - r, p[1] - r, 2 * r, 2 * r);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+function joySky(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawRainbow(); drawBirds(t); butterflies(t, false); fireflies(t, false); }
+function joyAfter(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); butterflies(t, true); fireflies(t, true); drawSparkles(t); drawHearts(t); }

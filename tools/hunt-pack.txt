@@ -1,0 +1,334 @@
+// ---- PANTHERA: hunts and escapes. A free camera, hoofed animals, slow motion and a cinematic finish ----
+COATS.leopardDay = { fur: ['#e6b862', '#cc9442', '#7c5628'], far: '#5e4020', rim: 'rgb(255,236,196)', lt: '255,240,214', belly: 'rgba(250,240,220,0.75)', muzzle: 'rgba(250,242,226,0.7)', mark: '#24180c' };
+COATS.jaguar = { fur: ['#e0a854', '#c08436', '#6e4a1c'], far: '#4c3014', rim: 'rgb(255,232,190)', lt: '255,238,205', belly: 'rgba(248,236,214,0.7)', muzzle: 'rgba(248,238,222,0.7)', mark: '#1a1006' };
+COATS.blackP2 = { fur: ['#33302e', '#1a1719', '#070606'], far: '#0a0908', rim: 'rgb(255,215,170)', lt: '255,215,175' };
+if (CFG.panther) Object.assign(COATS.panther, CFG.panther);
+(CFG.pack || []).forEach((p, i) => { if (OURS[i]) Object.assign(OURS[i], p, { coat: COATS[p.coat] }); });
+
+// ---- the camera: it orbits, rises, pushes in and shakes, all on story keys ----
+var SC0;
+let CAMYAW = 90, CAMTILT = 24, CAMFY = 0.66, CAMFX = 0, SHX = 0, SHY = 0;
+const CAMK = (() => { const k = CFG.cam, f = (name, d) => { let last = d; return k.map(c => [c.t, last = (c[name] === undefined ? last : c[name])]); };
+  return { yaw: f('yaw', 90), tilt: f('tilt', 24), zoom: f('zoom', 1), y: f('y', 0.66), x: f('x', 0), d: f('d', 900) }; })();
+function camUpdate(s) {
+  CAMYAW = keyVal(CAMK.yaw, s); CAMTILT = keyVal(CAMK.tilt, s); CAMFY = keyVal(CAMK.y, s); CAMFX = keyVal(CAMK.x, s); CH_D = keyVal(CAMK.d, s);
+  sc = SC0 * keyVal(CAMK.zoom, s); ox = W / 2 + 40 * sc;
+  const amp = (CFG.shake ? keyVal(CFG.shake, s) : 0) * clamp(tab(TAB0.v, s) / 650) * 5 * sc;   // a hand-held shake that grows with speed
+  SHX = amp * (Math.sin(s * 23.1) + 0.6 * Math.sin(s * 41.7 + 1.3)); SHY = amp * (Math.sin(s * 19.3 + 0.7) + 0.5 * Math.sin(s * 37.1 + 2.1));
+}
+// ---- slow motion: story time runs slower than the clock inside each window ----
+const SLOWS = CFG.slow || [];
+function rateAt(s) { let r = 1; for (const [a, b, q] of SLOWS) { const e = smooth(clamp((s - a) / 0.45)) * (1 - smooth(clamp((s - b + 0.45) / 0.45))); r = Math.min(r, lerp(1, q, e)); } return r; }
+const WS_DT = 1 / 240, WS_N = Math.ceil(STORY / WS_DT) + 2, RT = new Float64Array(WS_N);
+for (let i = 1; i < WS_N; i++) RT[i] = RT[i - 1] + WS_DT / rateAt((i - 0.5) * WS_DT);
+function realOf(s) { const x = clamp(s / WS_DT, 0, WS_N - 1.001), i = Math.floor(x); return lerp(RT[i], RT[i + 1], x - i); }
+const REAL = realOf(STORY);
+function storyAt(r) { let lo = 0, hi = WS_N - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (RT[m] <= r) lo = m; else hi = m; } return (lo + clamp((r - RT[lo]) / (RT[hi] - RT[lo] || 1))) * WS_DT; }
+
+// ---- hoofed animals: shaded low-poly bodies with a rotary gallop ----
+const BEASTS = {
+  gazelle: { L: 76, H: 29, W: 22, legU: 58, legD: 64, legR: [8, 4.2], neck: [64, 50, 12, 8], head: [46, 12, 10, 35], horns: 'lyre', tail: 20, stride: 340, earL: 18,
+    body: '#c98a4c', back: '#9c6834', belly: '#f4ece0', leg: '#b8824c', dark: '#2e1c10', horn: '#2a2018', stripe: '#3a2214' },
+  deer: { L: 86, H: 36, W: 27, legU: 64, legD: 70, legR: [9, 4.8], neck: [70, 55, 15, 10], head: [52, 14, 11, 38], horns: 'antler', tail: 16, stride: 360, earL: 22,
+    body: '#8f6038', back: '#6e4628', belly: '#e9ddcb', leg: '#80583a', dark: '#24160c', horn: '#e2d2ae', rump: '#f2ebe0' },
+  boar: { L: 82, H: 44, W: 34, hump: 0.25, legU: 30, legD: 32, legR: [12, 7], neck: [28, 12, 30, 26], head: [72, 25, 20, 30], horns: 'tusks', tail: 18, stride: 230, earL: 16,
+    body: '#4e3f34', back: '#2e241e', belly: '#3a2e26', leg: '#2c221c', dark: '#16110d', horn: '#efe6d2' },
+  buffalo: { L: 116, H: 62, W: 50, hump: 0.3, legU: 56, legD: 60, legR: [16, 10], neck: [30, 18, 44, 36], head: [70, 32, 26, 55], horns: 'boss', tail: 40, stride: 380, earL: 18,
+    body: '#34302d', back: '#211e1c', belly: '#2a2624', leg: '#221f1d', dark: '#0e0c0b', horn: '#46413b' },
+  rhino: { L: 128, H: 68, W: 58, hump: 0.12, legU: 52, legD: 54, legR: [22, 17], neck: [24, 6, 50, 46], head: [100, 36, 30, 28], horns: 'rhino', tail: 30, stride: 360, earL: 20,
+    body: '#8f8b85', back: '#7a7671', belly: '#6c6964', leg: '#7a7671', dark: '#3a3836', horn: '#625a50' },
+};
+for (const k in BEASTS) { const b = BEASTS[k]; b.c = {}; for (const p of ['body', 'back', 'belly', 'leg', 'dark', 'horn', 'stripe', 'rump']) if (b[p]) b.c[p] = rgbOf(b[p]); }
+const LDIR = (() => { const v = [-0.35, -0.85, 0.42], n = Math.hypot(...v); return v.map(x => x / n); })();
+const RIMC = [255, 226, 180];
+const mixc = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+function litStyle(c, n, f) {                     // the colour of a facet: sunlight, a little sky fill, and a warm rim at the silhouette
+  const lam = Math.max(0, n[0] * FA * LDIR[0] + n[1] * LDIR[1] + n[2] * FA * LDIR[2]), k = 0.4 + 0.72 * lam, rim = Math.pow(1 - clamp(f), 5) * 0.45;
+  return `rgb(${clamp(c[0] * k + RIMC[0] * rim, 0, 255) | 0},${clamp(c[1] * k + RIMC[1] * rim, 0, 255) | 0},${clamp(c[2] * k + RIMC[2] * rim, 0, 255) | 0})`;
+}
+const nrm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+function drawMesh(rings, colorOf, wrap = true) { // rings of {p:[x,y,z], n:[..]}: quads facing the camera, each shaded on its own
+  const pj = rings.map(r => r.map(v => pr(v.p[0], v.p[1], v.p[2])));
+  ctx.lineJoin = 'round'; ctx.lineWidth = 0.8;
+  for (let k = 0; k < rings.length - 1; k++) {
+    const M = rings[k].length;
+    for (let j = 0; j < (wrap ? M : M - 1); j++) {
+      const j2 = (j + 1) % M, a = rings[k][j], b = rings[k][j2], c = rings[k + 1][j2], d = rings[k + 1][j];
+      const n = nrm([a.n[0] + b.n[0] + c.n[0] + d.n[0], a.n[1] + b.n[1] + c.n[1] + d.n[1], a.n[2] + b.n[2] + c.n[2] + d.n[2]]), f = facing(n[0], n[1], n[2]);
+      if (f < -0.05) continue;
+      ctx.fillStyle = ctx.strokeStyle = litStyle(colorOf(k, j, a, n), n, f);
+      const P = [pj[k][j], pj[k][j2], pj[k + 1][j2], pj[k + 1][j]];
+      ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]); for (let q = 1; q < 4; q++) ctx.lineTo(P[q][0], P[q][1]); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
+}
+function legAng(p, hind, amp, A) {              // upper-leg swing (+ = forward) and the bend below the knee or hock
+  const duty = lerp(0.6, 0.36, amp), Aa = A * lerp(0.3, 0.62, amp);
+  if (p < duty) return [lerp(Aa, -Aa, p / duty), 0];
+  const s = (p - duty) / (1 - duty), up = lerp(-Aa, Aa, smooth(s)), fold = Math.sin(Math.PI * s) * lerp(0.6, 1.5, amp) * clamp(A * 2);
+  return [up, hind ? fold * 0.8 : -fold];
+}
+const G_OFF = { gallop: { LH: 0, RH: 0.1, LF: 0.52, RF: 0.62 }, walk: { LH: 0, LF: 0.25, RH: 0.5, RF: 0.75 } };
+function drawBeast(sp, st) {
+  const legTot = sp.legU + sp.legD, ycen = -(legTot * 0.93 + sp.H * 0.7) - st.lift, pc = Math.cos(st.pitch), ps = Math.sin(st.pitch);
+  const B = (x, y, z) => { const yy = y - ycen; return [x * pc - yy * ps, ycen + x * ps + yy * pc, z]; };
+  const BN = n => [n[0] * pc - n[1] * ps, n[0] * ps + n[1] * pc, n[2]];
+  const dep = (x, z) => (x * FA) * RS - (z * FA) * RC;
+  const parts = [];
+  // torso
+  parts.push({ d: dep(0, 0), draw: () => {
+    const NR = 12, M = 12, rings = [];
+    for (let k = 0; k < NR; k++) {
+      const u = -Math.cos(Math.PI * k / (NR - 1)), x = sp.L * u, e = Math.pow(Math.max(0, 1 - u * u), 0.42);
+      const hump = (sp.hump || 0) * Math.exp(-(((u - 0.45) / 0.3) ** 2)), hv = sp.H * (e + hump * 0.6) + 1, w = sp.W * e + 1, yc = ycen - sp.H * hump * 0.45;
+      const ring = [];
+      for (let j = 0; j < M; j++) { const a = TAU * j / M, ca = Math.cos(a), sa = Math.sin(a); ring.push({ p: B(x, yc + hv * ca, w * sa), n: BN(nrm([u * (1 - e) * 1.6, ca * sp.W / hv, sa])), ca, u }); }
+      rings.push(ring);
+    }
+    const C = sp.c;
+    drawMesh(rings, (k, j, v) => {
+      let c = C.body;
+      if (v.ca > 0.35) c = mixc(c, C.belly, clamp((v.ca - 0.35) / 0.35));
+      if (v.ca < -0.5) c = mixc(c, C.back, clamp((-v.ca - 0.5) / 0.4));
+      if (C.stripe && v.ca > 0.12 && v.ca < 0.42 && Math.abs(v.u) < 0.7) c = C.stripe;
+      if (C.rump && v.u < -0.72 && v.ca > -0.6) c = mixc(c, C.rump, 0.85);
+      return c;
+    });
+  } });
+  // neck and head
+  const na = (sp.neck[1] - st.hd * 0.6) * DEG, nd = [Math.cos(na), -Math.sin(na)], nq = [Math.sin(na), Math.cos(na)];
+  const n0 = [sp.L * 0.7, ycen - sp.H * 0.35], n1 = [n0[0] + nd[0] * sp.neck[0], n0[1] + nd[1] * sp.neck[0]];
+  const ha = (sp.head[3] + st.hd) * DEG, hd = [Math.cos(ha), Math.sin(ha)], hq = [-Math.sin(ha), Math.cos(ha)];
+  parts.push({ d: dep(sp.L * 0.9, 0) + 1, draw: () => {
+    const rings = [];
+    for (let k = 0; k < 5; k++) {
+      const s = k / 4, c = [lerp(n0[0], n1[0], s), lerp(n0[1], n1[1], s)], r = lerp(sp.neck[2], sp.neck[3], s), ring = [];
+      for (let j = 0; j < 10; j++) { const a = TAU * j / 10, ca = Math.cos(a), sa = Math.sin(a); ring.push({ p: B(c[0] + nq[0] * r * ca, c[1] + nq[1] * r * ca, r * 0.85 * sa), n: BN([nq[0] * ca, nq[1] * ca, sa]), ca }); }
+      rings.push(ring);
+    }
+    drawMesh(rings, (k, j, v) => v.ca > 0.4 ? mixc(sp.c.body, sp.c.belly, 0.6) : sp.c.body);
+    const HL = sp.head[0], HR = sp.head[1], HW = sp.head[2], hr = [];
+    const hpt = (s, rq, rz) => { const c = [n1[0] + hd[0] * HL * (s - 0.12), n1[1] + hd[1] * HL * (s - 0.12)]; return B(c[0] + hq[0] * rq, c[1] + hq[1] * rq, rz); };
+    const rad = s => HR * (0.62 + 0.42 * Math.sin(Math.PI * Math.min(1, s * 1.25))) * (1 - 0.42 * s);
+    for (let k = 0; k < 7; k++) {
+      const s = k / 6, r = rad(s) * (k === 6 ? 0.35 : 1), ring = [];
+      for (let j = 0; j < 10; j++) { const a = TAU * j / 10, ca = Math.cos(a), sa = Math.sin(a); ring.push({ p: hpt(s, r * ca, r * HW / HR * sa), n: BN(nrm([hd[0] * (s - 0.5) + hq[0] * ca, hd[1] * (s - 0.5) + hq[1] * ca, sa])), ca }); }
+      hr.push(ring);
+    }
+    drawMesh(hr, (k, j, v) => k >= 5 ? sp.c.dark : (v.ca > 0.5 ? mixc(sp.c.body, sp.c.belly, 0.4) : sp.c.body));
+    // ears, eyes, horns
+    for (const s of [-1, 1]) {
+      const eb = hpt(0.12, -rad(0.12) * 0.7, s * HW * 0.55), up = [-hq[0], -hq[1]];
+      const tip = [eb[0] + (-hd[0] * 0.55 + up[0]) * sp.earL, eb[1] + (-hd[1] * 0.55 + up[1]) * sp.earL, eb[2] + s * sp.earL * 0.45];
+      const pa = pr(...eb), pt = pr(...tip), pb = pr(eb[0] - hd[0] * 9, eb[1] - hd[1] * 9, eb[2]);
+      ctx.fillStyle = litStyle(sp.c.back, [0, -0.6, s * 0.8], 0.6); ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pt[0], pt[1]); ctx.lineTo(pb[0], pb[1]); ctx.closePath(); ctx.fill();
+      if (facing(0, -0.1, s) > 0.15) { const ey = pr(...hpt(0.36, -rad(0.36) * 0.3, s * HW * 0.86)); ctx.fillStyle = '#0b0807'; ctx.beginPath(); ctx.arc(ey[0], ey[1], 2.6, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(ey[0] - 0.8, ey[1] - 0.8, 0.8, 0, TAU); ctx.fill(); }
+    }
+    ctx.lineCap = 'round'; ctx.strokeStyle = sp.horn;
+    const up = [-hq[0], -hq[1]], curve = (pts, w0, w1) => { const p = pts.map(q => pr(...q)); for (let i = 0; i < p.length - 1; i++) { ctx.lineWidth = lerp(w0, w1, i / (p.length - 1)) * camK(pts[i][0], pts[i][1], pts[i][2]); ctx.beginPath(); ctx.moveTo(p[i][0], p[i][1]); ctx.lineTo(p[i + 1][0], p[i + 1][1]); ctx.stroke(); } };
+    const along = (o, v, k) => [o[0] + v[0] * k, o[1] + v[1] * k, o[2] + (v[2] || 0) * k];
+    for (const s of [-1, 1]) {
+      const hb = hpt(0.2, -rad(0.2) * 0.85, s * HW * 0.35);
+      if (sp.horns === 'lyre') curve([hb, along(hb, [-hd[0] * 0.25 + up[0], -hd[1] * 0.25 + up[1], s * 0.15], 26), along(hb, [-hd[0] * 0.6 + up[0] * 1.6, -hd[1] * 0.6 + up[1] * 1.6, s * 0.3], 26), along(hb, [-hd[0] * 0.3 + up[0] * 2.1, -hd[1] * 0.3 + up[1] * 2.1, s * 0.2], 26)], 5, 2);
+      if (sp.horns === 'antler') {
+        const a1 = along(hb, [-hd[0] * 0.4 + up[0], -hd[1] * 0.4 + up[1], s * 0.5], 30), a2 = along(hb, [-hd[0] * 0.9 + up[0] * 1.9, -hd[1] * 0.9 + up[1] * 1.9, s * 0.8], 30), a3 = along(hb, [-hd[0] * 0.5 + up[0] * 2.8, -hd[1] * 0.5 + up[1] * 2.8, s * 0.9], 30);
+        curve([hb, a1, a2, a3], 5, 2.5); curve([a1, along(a1, [hd[0] * 0.6 + up[0], hd[1] * 0.6 + up[1], 0], 20)], 3, 1.5); curve([a2, along(a2, [hd[0] * 0.5 + up[0], hd[1] * 0.5 + up[1], 0], 22)], 3, 1.5);
+      }
+      if (sp.horns === 'boss') { const o = hpt(0.15, -rad(0.15) * 0.9, s * HW * 0.2); curve([o, [o[0], o[1] + 4, s * (HW + 18)], [o[0] - 4, o[1] + 6, s * (HW + 34)], [o[0] - 8, o[1] - 14, s * (HW + 42)], [o[0] - 6, o[1] - 30, s * (HW + 36)]], 14, 4); }
+      if (sp.horns === 'tusks') { const o = hpt(0.86, rad(0.86) * 0.3, s * HW * 0.5); curve([o, along(o, [hd[0] * 0.4 + up[0], hd[1] * 0.4 + up[1], s * 0.3], 12), along(o, [up[0] * 1.6 - hd[0] * 0.2, up[1] * 1.6 - hd[1] * 0.2, s * 0.4], 12)], 4, 1.5); }
+    }
+    if (sp.horns === 'rhino') {
+      for (const [s, len, w] of [[0.86, 62, 16], [0.62, 28, 11]]) {
+        const o = hpt(s, -rad(s) * 0.9, 0), tip = along(o, [hd[0] * 0.35 + up[0], hd[1] * 0.35 + up[1], 0], len), b1 = pr(o[0] - hd[0] * w, o[1] - hd[1] * w, o[2]), b2 = pr(o[0] + hd[0] * w, o[1] + hd[1] * w, o[2]), tp = pr(...tip);
+        ctx.fillStyle = litStyle(sp.c.horn, [up[0], up[1], 0.3], 0.5); ctx.beginPath(); ctx.moveTo(b1[0], b1[1]); ctx.quadraticCurveTo((b1[0] + tp[0]) / 2 - 4, (b1[1] + tp[1]) / 2, tp[0], tp[1]); ctx.lineTo(b2[0], b2[1]); ctx.closePath(); ctx.fill();
+      }
+    }
+  } });
+  // tail
+  parts.push({ d: dep(-sp.L, 0) - 0.5, draw: () => {
+    const tb = B(-sp.L * 0.98, ycen - sp.H * 0.25, 0), sw = Math.sin(st.tail) * 0.5, ang = (115 + 40 * st.amp) * DEG;
+    const tt = [tb[0] - Math.sin(ang) * sp.tail, tb[1] + Math.cos(ang) * sp.tail * (1 - st.amp * 0.6) - st.amp * sp.tail * 0.3, sw * sp.tail];
+    const a = pr(...tb), b = pr(...tt); ctx.strokeStyle = litStyle(sp.c.back, [0, -1, 0], 0.5); ctx.lineCap = 'round'; ctx.lineWidth = 4 * camK(...tb);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.fillStyle = sp.dark; ctx.beginPath(); ctx.arc(b[0], b[1], 4 * camK(...tt), 0, TAU); ctx.fill();
+  } });
+  // legs
+  const off = st.amp > 0.4 ? G_OFF.gallop : G_OFF.walk;
+  for (const [id, hind, s] of [['LH', 1, 1], ['RH', 1, -1], ['LF', 0, 1], ['RF', 0, -1]]) {
+    const tx = hind ? -sp.L * 0.62 : sp.L * 0.6, tz = s * sp.W * 0.55;
+    parts.push({ d: dep(tx, tz), draw: () => {
+      let [th, bd] = legAng(frac(st.cyc - off[id]), hind, st.amp, st.A);
+      if (st.leap > 0) { const k = smooth(st.leap); th = lerp(th, hind ? -0.75 : 0.95, k); bd = lerp(bd, hind ? 1.3 : -1.9, k); }
+      const T = B(tx, ycen + sp.H * 0.32, tz), K = [T[0] + Math.sin(th) * sp.legU, T[1] + Math.cos(th) * sp.legU, tz];
+      const F = [K[0] + Math.sin(th + bd) * sp.legD, Math.min(0, K[1] + Math.cos(th + bd) * sp.legD), tz];
+      const near = facing(0, 0, s) > 0, cc = near ? sp.c.leg : mixc(sp.c.leg, [0, 0, 0], 0.35);
+      const pT = pr(...T), pK = pr(...K), pF = pr(...F), kT = camK(...T), kK = camK(...K), kF = camK(...F);
+      const tap = (a, b, w0, w1) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l; ctx.beginPath(); ctx.moveTo(a[0] + nx * w0, a[1] + ny * w0); ctx.lineTo(b[0] + nx * w1, b[1] + ny * w1); ctx.lineTo(b[0] - nx * w1, b[1] - ny * w1); ctx.lineTo(a[0] - nx * w0, a[1] - ny * w0); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.arc(b[0], b[1], w1, 0, TAU); ctx.fill(); };
+      ctx.fillStyle = litStyle(cc, [0.2, -0.2, s * 0.9], near ? 0.6 : 0.3);
+      tap(pT, pK, sp.legR[0] * 1.6 * kT, sp.legR[0] * 0.8 * kK);
+      tap(pK, pF, sp.legR[1] * 1.2 * kK, sp.legR[1] * kF);
+      ctx.fillStyle = sp.dark; ctx.beginPath(); ctx.ellipse(pF[0], pF[1] - 2, sp.legR[1] * 1.3 * kF, sp.legR[1] * 1.0 * kF, 0, 0, TAU); ctx.fill();
+    } });
+  }
+  parts.sort((a, b) => b.d - a.d);
+  for (const p of parts) p.draw();
+}
+function beastShadow(sp, lift) {
+  const k = clamp(1 - lift / 120), pts = [];
+  for (let i = 0; i < 16; i++) { const a = TAU * i / 16; pts.push(pr(Math.cos(a) * sp.L * 1.15, 0, Math.sin(a) * sp.W * 1.5)); }
+  ctx.fillStyle = `rgba(0,0,0,${0.28 * k})`; fillPoly(ctx, pts);
+}
+const HERDS = (CFG.herds || []).map(h => {
+  const tb = makeTab(t => keyVal(h.speed, t, spd)), sp = BEASTS[h.kind];
+  const fx0 = h.at ? h.at[1] - h.dir * tab(tb.d, h.at[0]) + tab(TAB0.d, h.at[0]) : h.fx0;
+  return { ...h, tb, sp, fx0 };
+});
+const herdFx = (h, m, t) => h.fx0 + h.dir * tab(h.tb.d, t) - tab(TAB0.d, t) + (m.dfx || 0);
+const herdZ = (h, m, mi, t) => m.z + (h.zig || 0) * Math.sin(tab(h.tb.d, t) / 300 + mi * 1.3) * (m.zk === undefined ? 1 : m.zk) + (h.zShift ? keyVal(h.zShift, t) : 0);
+
+// ---- sounds of the chase ----
+(() => {
+  for (let i = 1; i < TAB_N; i++) if (TAB0.v[i] < 5 && TAB0.v[i - 1] >= 5) EVENTS.push({ t: i * TAB_DT + 0.1, k: 'huff' });
+  for (let i = 0, t = 0.2; t < STORY - 0.8; i++, t += 0.21) {                  // the land's own ambience
+    const w = biomeW(tab(TAB0.d, t) + 800, 900), A = {};
+    BSEQ.forEach((s, j) => { for (const k in s.b.amb) A[k] = (A[k] || 0) + s.b.amb[k] * w[j]; });
+    if ((A.crick || 0) > 0.05 && i % 2 === 0) EVENTS.push({ t, k: 'cricket', v: A.crick, pan: Math.sin(i * 1.7) * 0.8 });
+    if ((A.birds || 0) > 0.05 && hh(i, 3.1) < 0.12 * A.birds) EVENTS.push({ t, k: 'tweet', v: A.birds, f: 2600 + 1900 * hh(i, 4.2), pan: (hh(i, 5.3) - 0.5) * 1.4 });
+    if ((A.wind || 0) > 0.05 && i % 13 === 0) EVENTS.push({ t, k: 'wind', v: A.wind });
+    if ((A.insects || 0) > 0.05 && i % 9 === 4) EVENTS.push({ t, k: 'buzz', v: A.insects, pan: Math.sin(i) * 0.7 });
+  }
+  for (let t = 0.1; t < STORY - 0.3; t += 0.09) for (const h of HERDS) {        // hooves: a drumming that swells as the herd comes close
+    let near = 1e9, n = 0; const v = tab(h.tb.v, t); if (v < 60) continue;
+    h.members.forEach((m, mi) => { const d = Math.hypot(herdFx(h, m, t), herdZ(h, m, mi, t) * 0.6); near = Math.min(near, d); if (d < 2500) n++; });
+    const vol = Math.sqrt(n) * 0.075 * clamp(1 - near / 2600) * clamp(v / 300) * (h.kind === 'buffalo' || h.kind === 'rhino' ? 1.5 : 0.8);
+    if (vol > 0.004) EVENTS.push({ t: t + 0.03 * Math.sin(t * 50), k: 'hoof', v: vol, heavy: h.sp.L > 100, pan: (hh(t * 10 | 0, 2) - 0.5) * 0.8 });
+  }
+  for (const h of HERDS) for (const t of h.snorts || []) EVENTS.push({ t, k: 'snort', heavy: h.sp.L > 100 });
+  for (const t of CFG.roars || []) EVENTS.push({ t, k: 'roar' });
+  for (const [a, b, bpm] of CFG.drums || []) for (let t = a, i = 0; t < b; t += 60 / bpm, i++) EVENTS.push({ t, k: 'drum', acc: i % 4 === 0, v: clamp((t - a) / 1.5) * clamp((b - t) / 1.5) });
+})();
+
+let AX = 0, AY = 0, AK = 1;   // where the animal being drawn sits relative to the panther (screen body units), and its size
+function placeAnimal(fx, z, size) {
+  const o = pr(0, 0, 0), p = pr(fx, 0, z);
+  AX = p[0] - o[0]; AY = p[1] - o[1];
+  AK = size * camK(fx, PIV, z) / camK(0, PIV, 0);
+}
+const tooClose = (fx, z) => CH_D + (fx * RS - z * RC) * CT < CH_D * 0.42;
+function drawPack(t) {
+  let pb = 0;
+  for (const h of HERDS) if (h.spread) h.members.forEach(m => { pb = Math.max(pb, smooth(clamp(1 - Math.abs(herdFx(h, m, STL)) / 700))); });
+  const spread = 1 + 0.35 * pb, tau = SD / 450;
+  const ents = [{ fx: 0, z: 0, me: true }];
+  OURS.forEach((a, i) => ents.push({ a, fa: 1, ph: a.ph, fx: a.fx + 40 * Math.sin(tau * 0.8 + i * 2.1), z: a.z * spread + 10 * Math.sin(tau * 0.6 + i) }));
+  for (const h of HERDS) {
+    const Dm = tab(h.tb.d, STL), vm = tab(h.tb.v, STL), hdK = h.hd ? keyVal(h.hd, STL) : 0;
+    h.members.forEach((m, mi) => {
+      const fx = herdFx(h, m, STL); if (fx < -4500 || fx > 6500) return;
+      ents.push({ beast: true, h, m, mi, fx, z: herdZ(h, m, mi, STL), Dm, vm, hdK });
+    });
+  }
+  for (const e of ents) e.d = e.fx * RS - e.z * RC;              // further from the camera first
+  ents.sort((p, q) => q.d - p.d);
+  for (const e of ents) {
+    TALKW = 0;
+    if (e.me) { FA = 1; AX = 0; AY = 0; AK = 1; COAT = COATS.panther; MARKS = null; DLAG = 0; TAB = TAB0; drawPanther(t); continue; }
+    if (tooClose(e.fx, e.z)) continue;
+    if (e.beast) {
+      const { h, m, mi } = e, sp = h.sp, size = m.size || 1;
+      FA = 1; placeAnimal(e.fx, e.z, size); if (AK > 2.6 || Math.abs(AX) > 1600) continue;
+      let lift = 0, leap = 0, lp = 0;
+      for (const [l0, ld, lh] of h.leaps || []) { const s = (STL - l0 - mi * 0.13) / ld; if (s > 0 && s < 1) { lift = Math.max(lift, lh * Math.sin(Math.PI * s)); leap = Math.max(leap, Math.sin(Math.PI * s) * 1.4); lp = -0.18 * Math.cos(Math.PI * s); } }
+      const amp = clamp((e.vm - 150) / 300), cyc = e.Dm / (sp.stride * size) + (m.ph === undefined ? hh(mi, 4.4) : m.ph);
+      const graze = e.vm < 20 ? 6 * Math.sin(STL * 1.3 + mi * 2) : 0;
+      const st = { cyc, amp, A: clamp(e.vm / 90), lift: lift + amp * 8 * Math.max(0, Math.sin(TAU * (cyc - 0.25))), pitch: amp * 0.06 * Math.sin(TAU * cyc) + lp, hd: e.hdK + graze, leap: clamp(leap), tail: STL * (3 + 6 * amp) + mi };
+      FA = h.dir; setGroundTransform(ctx); beastShadow(sp, st.lift); drawBeast(sp, st);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      continue;
+    }
+    FA = 1; placeAnimal(e.fx, e.z, e.a.size);
+    if (AK > 2.4 || Math.abs(AX) > 1400) continue;
+    FA = e.fa; COAT = e.a.coat; MARKS = e.a.marks; DLAG = 0; TAB = TAB0;
+    drawPanther(t, e.ph);
+  }
+  FA = 1; AX = 0; AY = 0; AK = 1; COAT = COATS.panther; MARKS = null; DLAG = 0; TALKW = 0; TAB = TAB0;
+}
+// dust thrown up behind the running herds
+function drawHerdDust() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const P3w = (f, z, hg) => { const q = pr(f, -hg, z); return [ox + CAMX + q[0] * sc, oy + CAMY + q[1] * sc]; };
+  for (const h of HERDS) {
+    if (!h.dust) continue;
+    const Dm = tab(h.tb.d, STL), vm = tab(h.tb.v, STL); if (vm < 80) continue;
+    const step = 110, dc = PAL.c.dust;
+    h.members.forEach((m, mi) => {
+      for (let k = Math.floor(Dm / step); k > Math.floor(Dm / step) - 9; k--) {
+        const age = (Dm - k * step) / vm; if (age < 0 || age > 1.6) continue;
+        const f = h.fx0 + h.dir * (k * step) - SD + (m.dfx || 0) - h.dir * 40, z = herdZ(h, m, mi, STL) + (hh(k, mi) - 0.5) * 60;
+        if (tooClose(f, z)) continue;
+        const p = P3w(f, z, 20 + 70 * age), q = P3w(f, z, 120 + 70 * age), kk = Math.abs(p[1] - q[1]) / (100 * sc + 1e-6);
+        const r = (40 + 110 * age) * kk * sc * (h.sp.L > 100 ? 1.4 : 0.9), al = 0.22 * h.dust * (1 - age / 1.6) * clamp(vm / 400);
+        const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r); g.addColorStop(0, col(dc, al)); g.addColorStop(1, col(dc, 0));
+        ctx.fillStyle = g; ctx.fillRect(p[0] - r, p[1] - r, 2 * r, 2 * r);
+      }
+    });
+  }
+}
+// weather of the land: fireflies, snow, falling petals or leaves, rain
+function drawWeather(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (PAL.ff > 0.02) { ctx.globalAlpha = PAL.ff; drawFireflies(t); ctx.globalAlpha = 1; }
+  if (PAL.snow > 0.02) {
+    ctx.fillStyle = `rgba(255,255,255,${0.85 * PAL.snow})`;
+    for (let i = 0; i < 170; i++) {
+      const r = (1.6 + 3.6 * hh(i, 4.1)) * sc, x = ((hh(i, 1.1) * W + Math.sin(t * 0.7 + i) * 30 * sc + t * 25 * sc) % W + W) % W, y = (hh(i, 2.3) * H + t * (70 + 110 * hh(i, 3.2)) * sc) % H;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    }
+  }
+  if (PAL.petals > 0.02) {
+    ctx.fillStyle = col(PAL.c.petalCol, 0.85 * PAL.petals);
+    for (let i = 0; i < 60; i++) {
+      const x = ((hh(i, 5.1) * W + t * (30 + 50 * hh(i, 6.2)) * sc + Math.sin(t * 1.3 + i) * 40 * sc) % W + W) % W, y = (hh(i, 7.7) * H + t * (60 + 70 * hh(i, 8.3)) * sc) % H;
+      ctx.beginPath(); ctx.ellipse(x, y, 8 * sc, 3.6 * sc, t * (1 + 2 * hh(i, 9.4)) + i, 0, TAU); ctx.fill();
+    }
+  }
+  if (PAL.rain > 0.02) {
+    ctx.strokeStyle = `rgba(225,238,255,${0.32 * PAL.rain})`; ctx.lineWidth = 1.6 * sc;
+    ctx.beginPath();
+    for (let i = 0; i < 130; i++) {
+      const x = ((hh(i, 3.3) * W + t * 90 * sc) % W + W) % W, y = (hh(i, 4.4) * H + t * 1500 * sc * (0.8 + 0.4 * hh(i, 5.5))) % H;
+      ctx.moveTo(x, y); ctx.lineTo(x - 6 * sc, y + 38 * sc);
+    }
+    ctx.stroke();
+  }
+}
+// the cinematic finish: dust haze, colour grade, sun glow, vignette, film grain and thin bars
+const GRAIN = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'), im = g.createImageData(256, 256), r = rng(9);
+  for (let i = 0; i < 256 * 256; i++) { const v = 128 + (r() - 0.5) * 255; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; } g.putImageData(im, 0, 0); return c; })();
+function drawCine() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  const hz = CFG.haze ? keyVal(CFG.haze, STL) : 0;
+  if (hz > 0.01) { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, col(PAL.c.dust, 0.15 * hz)); g.addColorStop(0.6, col(PAL.c.dust, 0.45 * hz)); g.addColorStop(1, col(PAL.c.dust, 0.3 * hz)); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+  if (CFG.grade) { ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = CFG.grade[1]; ctx.fillStyle = CFG.grade[0]; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+  if (CFG.glow) { ctx.globalCompositeOperation = 'screen'; const g = ctx.createRadialGradient(W * CFG.glow[0], H * 0.05, 0, W * CFG.glow[0], H * 0.05, H * 0.7); g.addColorStop(0, `rgba(${CFG.glow[1]},0.28)`); g.addColorStop(1, `rgba(${CFG.glow[1]},0)`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+  ctx.globalCompositeOperation = 'source-over';
+  vignette();
+  ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = 0.09;
+  const gx = (hh(Math.floor(STL * 30), 1.3) * 256) | 0, gy = (hh(Math.floor(STL * 30), 2.7) * 256) | 0;
+  for (let y = -gy; y < H; y += 256) for (let x = -gx; x < W; x += 256) ctx.drawImage(GRAIN, x, y);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  const bh = Math.round(H * 0.035); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, bh); ctx.fillRect(0, H - bh, W, bh);
+}
+function drawTitle() {                                             // the episode card over the first seconds
+  const a = smooth(clamp((STL - 0.5) / 0.7)) * (1 - smooth(clamp((STL - 3.8) / 0.9))); if (a <= 0) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = S * 0.025;
+  const y0 = H * 0.17;
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = `600 ${Math.round(S * 0.03)}px "Segoe UI", system-ui, sans-serif`;
+  try { ctx.letterSpacing = `${Math.round(S * 0.012)}px`; } catch (e) {}
+  ctx.fillText(`${CFG.series || 'PANTHERA'}  ·  EPISODE ${CFG.ep}`, W / 2, y0);
+  try { ctx.letterSpacing = `${Math.round(S * 0.006)}px`; } catch (e) {}
+  ctx.fillStyle = '#ffffff'; ctx.font = `300 ${Math.round(S * 0.085)}px "Segoe UI Light", "Segoe UI", system-ui, sans-serif`;
+  ctx.fillText(CFG.title.toUpperCase(), W / 2, y0 + S * 0.085);
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(W / 2 - S * 0.08, y0 + S * 0.15, S * 0.16, Math.max(1, S * 0.002));
+  ctx.restore();
+}

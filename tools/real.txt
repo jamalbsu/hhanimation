@@ -1,0 +1,34 @@
+// ---- REALISM: a touch of lens and air over the cartoon (CFG.real; every strength can be tuned or set to 0) ----
+const RL = CFG.real ? Object.assign({ dof: 0.55, fog: 0.55, motes: 1, glints: 1, bloom: 0.16, grade: 1 }, CFG.real === true ? {} : CFG.real) : null;
+function realDOF() {                                   // the background goes a little soft, more so when the camera is close
+  if (!RL || RL.dof <= 0) return; const r = 1.1 * RL.dof * sc * clamp(sc / SC0, 0.7, 1.6); if (r < 0.3) return;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${r.toFixed(2)}px)`; ctx.drawImage(ctx.canvas, 0, 0, W, H); ctx.restore();
+}
+function realAir(t) {                                  // dust and pollen drifting in the light; sun glitter on water
+  if (!RL) return; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'lighter';
+  if (RL.glints > 0 && RIV) {
+    const fa = rivF(); ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    for (let i = 0; i < 70; i++) { const tw = Math.pow(Math.max(0, Math.sin(t * (3 + 3 * hh(i, 1.3)) + i * 7.7)), 10) * RL.glints; if (tw < 0.05) continue;
+      const f = fa + hh(i, 2.3) * RIV.w, z = (hh(i, 3.3) - 0.5) * 3600; if (f < -3000 || f > 5000 || !hzVis(f, z)) continue; const p = P3s(f, 2, z); sparkle(p[0], p[1], S * 0.012 * tw * Math.min(1.5, hzK(f, 0, z) * 1.4)); }
+  }
+  if (RL.motes > 0) {
+    const mc = RL.moteCol || '255,244,214', span = W * 1.3;
+    for (let i = 0; i < 46; i++) {
+      const near = hh(i, 1.1), x = ((hh(i, 2.2) * span - t * (8 + 30 * near) * sc - SD * sc * (0.04 + 0.5 * near) * RC) % span + span) % span - W * 0.15;
+      const y = H * (0.14 + 0.76 * hh(i, 3.3)) + Math.sin(t * 0.6 + i) * S * 0.02, r = S * (0.003 + 0.022 * near * near), a = RL.motes * (0.05 + 0.1 * (1 - near)) * (0.6 + 0.4 * Math.sin(t * 1.3 + i * 2));
+      ctx.fillStyle = `rgba(${mc},${a})`; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+function realPost() {                                  // film-style light balance, contrast and a soft bloom on the highlights
+  if (!RL) return; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (RL.grade > 0) {
+    const sx = CFG.rays ? CFG.rays.x : 0.3, g = ctx.createLinearGradient(W * sx, 0, W * (1 - sx), H);
+    g.addColorStop(0, `rgba(255,205,150,${0.12 * RL.grade})`); g.addColorStop(1, `rgba(70,110,200,${0.12 * RL.grade})`);
+    ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+    ctx.filter = `contrast(${1 + 0.06 * RL.grade}) saturate(${1 + 0.1 * RL.grade})`; ctx.drawImage(ctx.canvas, 0, 0, W, H);
+  }
+  if (RL.bloom > 0) { ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = RL.bloom; ctx.filter = `blur(${(S * 0.012).toFixed(1)}px) brightness(0.8) contrast(1.8)`; ctx.drawImage(ctx.canvas, 0, 0, W, H); }
+  ctx.restore();
+}

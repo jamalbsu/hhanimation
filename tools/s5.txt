@@ -1,0 +1,57 @@
+// ---- SEASON 5: friend cats with their own pace, rock islands, big splashes, a waterfall, a double rainbow, ice ----
+const FRIENDS = (CFG.friends || []).map(fr => {
+  const tb = makeTab(t => keyVal(fr.speed, t, spd)), fx0 = fr.at[1] - tab(tb.d, fr.at[0]) + tab(TAB0.d, fr.at[0]);
+  const z0 = Array.isArray(fr.z) ? fr.z[0][1] : fr.z;
+  return { ...fr, tb, fx0, coatObj: COATS[fr.coat], islandD: fx0 + tab(TAB0.d, 0), islandZ: z0 };   // where it stands before it runs
+});
+const friendFx = (fr, t) => fr.fx0 + tab(fr.tb.d, t) - tab(TAB0.d, t);
+const friendZ = (fr, t) => Array.isArray(fr.z) ? keyVal(fr.z, t) : fr.z;
+function drawIsland(fr) {                                       // a flat rock in the river, where a friend waits
+  const f = fr.islandD - SD, z = fr.islandZ; if (!hzVis(f, z)) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1, 3 * sc); const fo = hzRing(f + 10, z, 230, 165); ctx.beginPath(); fo.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
+  ctx.fillStyle = '#6f695e'; fillPoly(ctx, hzRing(f, z, 200, 140, 6));
+  ctx.fillStyle = '#8f887a'; fillPoly(ctx, hzRing(f - 20, z - 12, 140, 95, 14));
+  ctx.fillStyle = 'rgba(255,255,255,0.18)'; fillPoly(ctx, hzRing(f - 40, z - 30, 70, 40, 16));
+}
+const BURSTS = (CFG.bursts || []).map(b => ({ ...b, D: tab(TAB0.d, b.t) + (b.f || 0) }));
+function drawBursts(t) {                                        // a big splash: a spreading ring and a crown of drops
+  for (const b of BURSTS) {
+    const d = STL - b.t; if (d < 0 || d > 1.4) continue;
+    const f = b.D - SD, z = b.z || 0, s = b.size || 1; if (!hzVis(f, z)) continue;
+    const k = hzK(f, 0, z);
+    ctx.strokeStyle = `rgba(255,255,255,${0.85 * (1 - d / 1.4)})`; ctx.lineWidth = Math.max(1, 7 * k * (1 - d / 1.4));
+    const ring = hzRing(f, z, (120 + 520 * d) * s, (80 + 340 * d) * s); ctx.beginPath(); ring.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
+    ctx.fillStyle = 'rgba(240,250,255,0.92)';
+    for (let i = 0; i < 80; i++) {
+      const a = TAU * hh(i, 3.1 + b.t), sp = 0.5 + hh(i, 4.1), hgt = 560 * sp * s * (d * 1.6 - d * d * 1.15), r = (80 + 430 * d * sp) * s;
+      if (hgt < -10) continue; const q = P3s(f + Math.cos(a) * r, Math.max(0, hgt), z + Math.sin(a) * r * 0.7);
+      ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(1, (5 + 8 * hh(i, 5.1)) * k * s * (1 - d / 1.6)), 0, TAU); ctx.fill();
+    }
+  }
+}
+const FALLS = CFG.falls ? { ...CFG.falls, d0: tab(TAB0.d, CFG.falls.from), d1: tab(TAB0.d, CFG.falls.until) } : null;
+function drawFalls(t) {                                         // a waterfall pouring down a rock face beside the river
+  if (!FALLS) return; const z = FALLS.z, h = FALLS.h, step = 170;
+  for (let D = FALLS.d0; D < FALLS.d1; D += step) {
+    const fa = D - SD, fb = Math.min(D + step, FALLS.d1) - SD; if (!hzVis(fa, z) || !hzVis(fb, z)) continue;
+    const P = [P3s(fa, 0, z), P3s(fa, h, z), P3s(fb, h, z), P3s(fb, 0, z)];
+    const g = ctx.createLinearGradient(0, P[1][1], 0, P[0][1]); g.addColorStop(0, '#e2f7ff'); g.addColorStop(0.5, '#86cdee'); g.addColorStop(1, '#c6edff');
+    ctx.fillStyle = g; fillPoly(ctx, P);
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1, 2.4 * hzK(fa, h / 2, z)); ctx.beginPath();
+    for (let i = 0; i < 6; i++) { const ff = fa + (i + 0.5) / 6 * (fb - fa), ph = frac(t * 1.4 + hh(i, D * 0.01)), y0 = h * (1 - ph), y1 = Math.max(0, y0 - h * 0.28), a = P3s(ff, y0, z), b2 = P3s(ff, y1, z); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); }
+    ctx.stroke();
+    ctx.fillStyle = '#5a564c'; fillPoly(ctx, [P3s(fa, h, z), P3s(fa, h + 80 + 30 * hh(D, 2), z), P3s(fb, h + 80 + 30 * hh(D + step, 2), z), P3s(fb, h, z)]);
+    const m = P3s((fa + fb) / 2, 70, z + 80), mr = 230 * hzK((fa + fb) / 2, 70, z); if (mr > 1) hzPuff(m[0], m[1], mr, 'rgba(255,255,255,0.8)', 'rgba(255,255,255,0.35)', 'rgba(255,255,255,0)');
+  }
+}
+function drawRainbow2() {                                       // the fainter second bow, colours reversed
+  if (!CFG.rainbow2) return; const k = kv(CFG.rainbow, 0); if (k <= 0.01) return;
+  const cx = W * (CFG.rainbowX || 0.62), cy = H * 0.6, R0 = S * 1.0, bw = S * 0.02;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H * 0.5); ctx.clip(); ctx.globalAlpha = 0.24 * k; ctx.lineWidth = bw;
+  ['#b388ff', '#6c7bff', '#4dc3ff', '#7ee081', '#ffe14d', '#ff9f43', '#ff4d4d'].forEach((c, i) => { ctx.strokeStyle = c; ctx.beginPath(); ctx.arc(cx, cy, R0 - i * bw, Math.PI, TAU); ctx.stroke(); });
+  ctx.restore();
+}
+(() => {                                                        // big splashes are heard
+  for (const b of CFG.bursts || []) { EVENTS.push({ t: b.t, k: 'splash', v: 0.32 * (b.size || 1), pan: 0 }); EVENTS.push({ t: b.t + 0.08, k: 'splash', v: 0.2, pan: 0.3 }); }
+})();

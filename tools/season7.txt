@@ -1,0 +1,69 @@
+// ---- SEASON 7: the Rain Run. New small friends (calf, tortoise, ostrich, fennecs, oxpecker), actors on keyed paths, a cliff edge, a flash flood ----
+const E7 = (x, y, rx, ry, c, r = 0) => { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), r, 0, TAU); ctx.fill(); };
+const L7 = (x0, y0, x1, y1, w, c) => { ctx.strokeStyle = c; ctx.lineWidth = Math.max(1, w); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+Object.assign(SPR, {
+  calf(x, y, s, t, i) { const b = Math.sin(t * 9 + i) * s * 0.05;                                 // a buffalo calf, sitting up on a back
+    E7(x, y - s * 0.7 + b, s * 0.9, s * 0.6, '#7a5a44'); E7(x + s * 0.95, y - s * 1.1 + b, s * 0.55, s * 0.5, '#8a6a52'); E7(x + s * 1.3, y - s * 0.9 + b, s * 0.3, s * 0.22, '#d8b8a0');
+    E7(x + s * 0.7, y - s * 1.45 + b, s * 0.3, s * 0.16, '#6a4a36', -0.5); E7(x + s * 1.12, y - s * 1.2 + b, s * 0.2, s * 0.22, '#fff'); E7(x + s * 1.16, y - s * 1.18 + b, s * 0.11, s * 0.13, '#111');
+    L7(x + s * 1.0, y - s * 1.55 + b, x + s * 1.1, y - s * 1.78 + b, s * 0.12, '#e8dcc8'); L7(x - s * 0.5, y - s * 0.5 + b, x - s * 0.9, y - s * 0.1 + b, s * 0.2, '#6a4a36'); },
+  tortoise(x, y, s, t, i) { const p = Math.sin(t * 10 + i) * s * 0.18;                              // a high olive dome, long neck, paddling legs
+    for (const dx of [-0.6, 0.5]) L7(x + dx * s, y - s * 0.3, x + dx * s + p, y + s * 0.1, s * 0.3, '#8a7a4a');
+    L7(x + s * 0.8, y - s * 0.6, x + s * 1.5, y - s * 0.95, s * 0.3, '#9a8a58'); E7(x + s * 1.6, y - s * 1.0, s * 0.3, s * 0.24, '#a89a64'); E7(x + s * 1.7, y - s * 1.05, s * 0.07, s * 0.07, '#111');
+    ctx.fillStyle = '#6b6a3a'; ctx.beginPath(); ctx.ellipse(x, y - s * 0.7, s * 1.1, s * 0.85, 0, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#c4a84a'; ctx.lineWidth = Math.max(1, s * 0.07);
+    for (const dx of [-0.55, 0, 0.55]) { ctx.beginPath(); ctx.arc(x + dx * s, y - s * 0.7, s * 0.4, Math.PI, 0); ctx.stroke(); } },
+  ostrich(x, y, s, t, i) { const r = Math.sin(t * 13 + i), d = i === 9 ? 1 : 0;                      // black body, white plumes, long pink neck and legs (i = 9: head in the sand)
+    L7(x - s * 0.2, y - s * 1.3, x - s * 0.4 + r * s * 0.5, y, s * 0.18, '#e8a4a0'); L7(x + s * 0.2, y - s * 1.3, x + s * 0.4 - r * s * 0.5, y, s * 0.18, '#e8a4a0');
+    E7(x, y - s * 1.7, s * 1.0, s * 0.7, '#1c1a1c'); E7(x - s * 0.9, y - s * 1.9, s * 0.5, s * 0.35, '#f4f0e8', 0.4); E7(x - s * 0.2, y - s * 1.5, s * 0.55, s * 0.35, '#f4f0e8');
+    if (d) { L7(x + s * 0.7, y - s * 1.9, x + s * 1.0, y - s * 0.05, s * 0.2, '#e8a4a0'); } else { L7(x + s * 0.7, y - s * 1.9, x + s * 1.1, y - s * 3.4 + r * s * 0.15, s * 0.2, '#e8a4a0'); E7(x + s * 1.2, y - s * 3.5 + r * s * 0.15, s * 0.3, s * 0.2, '#e8a4a0'); E7(x + s * 1.28, y - s * 3.55 + r * s * 0.15, s * 0.06, s * 0.06, '#111'); } },
+  fennec(x, y, s, t, i) { const w = Math.sin(t * 5 + i) * 0.12;                                      // cream fox, ears as long as the body
+    E7(x, y - s * 0.6, s * 0.8, s * 0.5, '#f0d9a8'); E7(x - s * 0.9, y - s * 0.55, s * 0.5, s * 0.22, '#f0d9a8', 0.3); E7(x - s * 1.25, y - s * 0.5, s * 0.22, s * 0.16, '#2a2018');
+    E7(x + s * 0.75, y - s * 0.95, s * 0.45, s * 0.38, '#f6e4bc'); E7(x + s * 1.1, y - s * 0.9, s * 0.1, s * 0.08, '#111'); E7(x + s * 0.9, y - s * 1.05, s * 0.06, s * 0.07, '#111');
+    for (const k of [0, 1]) { ctx.save(); ctx.translate(x + s * (0.6 + k * 0.2), y - s * 1.2); ctx.rotate(-0.3 + k * 0.5 + w * (k ? -1 : 1)); E7(0, -s * 0.75, s * 0.22, s * 0.8, '#f0d9a8'); E7(0, -s * 0.7, s * 0.12, s * 0.6, '#f4a9a0'); ctx.restore(); } },
+  oxpecker(x, y, s, t, i) { const f = Math.sin(t * 14 + i) * 0.5;                                   // small brown bird, red beak with a yellow tip
+    E7(x, y - s * 0.4, s * 0.6, s * 0.38, '#7a6048'); E7(x + s * 0.55, y - s * 0.7, s * 0.3, s * 0.28, '#6a5038'); E7(x + s * 0.62, y - s * 0.75, s * 0.1, s * 0.1, '#e8c020'); E7(x + s * 0.64, y - s * 0.75, s * 0.05, s * 0.05, '#c01010');
+    ctx.fillStyle = '#d82818'; ctx.beginPath(); ctx.moveTo(x + s * 0.8, y - s * 0.78); ctx.lineTo(x + s * 1.3, y - s * 0.68); ctx.lineTo(x + s * 0.82, y - s * 0.58); ctx.fill(); E7(x + s * 1.24, y - s * 0.68, s * 0.08, s * 0.05, '#f0c020');
+    ctx.fillStyle = '#5a4430'; ctx.beginPath(); ctx.moveTo(x - s * 0.1, y - s * 0.5); ctx.quadraticCurveTo(x - s * 0.5, y - s * (0.9 + f), x - s * 0.9, y - s * (0.7 + f)); ctx.lineTo(x - s * 0.3, y - s * 0.4); ctx.fill(); },
+});
+SPR.elephantcalf = (x, y, s, t, i) => { const b = Math.sin(t * 8 + i) * s * 0.06;
+  for (const dx of [-0.7, -0.2, 0.4, 0.9]) L7(x + dx * s, y - s * 0.7 + b, x + dx * s + Math.sin(t * 9 + dx * 5) * s * 0.25, y, s * 0.28, '#7a726a');
+  E7(x, y - s * 1.2 + b, s * 1.2, s * 0.8, '#8a8078'); E7(x + s * 1.2, y - s * 1.55 + b, s * 0.62, s * 0.58, '#8a8078'); E7(x + s * 0.8, y - s * 1.45 + b, s * 0.55, s * 0.7, '#9a9088', 0.3); E7(x + s * 0.8, y - s * 1.45 + b, s * 0.3, s * 0.45, '#c8a89c', 0.3);
+  L7(x + s * 1.6, y - s * 1.4 + b, x + s * 1.9, y - s * 0.7 + b + Math.sin(t * 6) * s * 0.15, s * 0.3, '#8a8078'); E7(x + s * 1.3, y - s * 1.7 + b, s * 0.09, s * 0.09, '#111'); };
+SPR.kit = (x, y, s, t, i) => SPR.fennec(x, y, s * 0.6, t, i + 2);
+// actors: any sprite on a keyed path through the world. at = the moment the road position is fixed; df / z / hg are [[t, value]] keys
+const ACT = (CFG.actors || []).map(a => ({ ...a, D: worldD(a.at || 0, 0) }));
+function drawActors(front) {
+  for (const a of ACT) {
+    if ((a.from !== undefined && STL < a.from) || (a.until !== undefined && STL > a.until)) continue;
+    const f = a.D + keyVal(a.df, STL) - SD, z = keyVal(a.z, STL), hg = a.hg ? keyVal(a.hg, STL) : 0;
+    if (!hzVis(f, z) || (hzDepth(f, z) < -40) !== front) continue;
+    const q = P3s(f, hg, z), s = (a.size || 22) * 2.3 * hzK(f, hg, z); if (s < 0.7) continue;
+    SPR[a.kind](q[0], q[1], s, STL, a.i || 0);
+  }
+}
+// the cliff edge: from "from" on, the ground ahead of "at" simply ends and a green valley lies far below
+function drawEdge() {
+  const E = CFG.edge; if (!E || STL < E.from) return; const k = smooth(clamp((STL - E.from) / 0.7)), f0 = worldD(E.at, 0) - SD;
+  ctx.globalAlpha = k; hzFill(hzBand(f0, f0 + 30000, -9000, 9000, 24), E.col || '#a8c8cc'); hzFill(hzBand(f0 + 400, f0 + 30000, -9000, 9000, 24), E.col2 || '#8fb8bc');
+  hzFill(hzBand(f0 - 320, f0, -9000, 9000, 6), '#3a2c24'); ctx.globalAlpha = 1;
+}
+// a flash flood coming down the riverbed at the pack: a brown front, foam and torn reeds
+function drawFlash(t) {
+  const F = CFG.flood; if (!F || STL < F.from) return; const f0 = worldD(F.at || 0, 0) - SD + keyVal(F.front, STL);
+  hzFill(hzBand(f0, f0 + 9000, F.z0, F.z1, 20, 18), '#7a5a3a'); hzFill(hzBand(f0, f0 + 9000, F.z0, F.z1, 20, 30), 'rgba(150,112,70,0.8)');
+  for (let k = 0; k < 14; k++) { const z = lerp(F.z0, F.z1, hh(k, 3.1)), ff = f0 + 60 * Math.sin(t * 5 + k) - 40 * hh(k, 1.7), r = 120 * hzK(ff, 60, z) * (0.7 + hh(k, 2)); if (!hzVis(ff, z)) continue; const p = P3s(ff, 80 + 50 * hh(k, 4.2), z); hzPuff(p[0], p[1], Math.max(4, r), 'rgba(240,232,214,1)', 'rgba(210,196,170,0.9)', 'rgba(170,150,120,0)'); }
+}
+// a passing grade: the picture warms from the cool one to the warm one
+function s7Grade() { const G = CFG.warmUp; if (!G) return; const k = smooth(clamp((STL - G[0]) / (G[1] - G[0]))) * G[3]; if (k <= 0) return; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = k; ctx.fillStyle = G[2]; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+// the storm wall: a dark mass filling the sky, with a pale rain curtain under it and lightning glowing inside
+function drawStorm(t) {
+  const SW = CFG.stormWall; if (!SW) return; const k = keyVal(SW.size, STL); if (k <= 0.01) return; ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const bot = H * Math.min(0.66, 0.3 + 0.25 * k), g = ctx.createLinearGradient(0, 0, 0, bot); g.addColorStop(0, '#161c26'); g.addColorStop(0.6, '#2c3644'); g.addColorStop(1, '#4a5666');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W, 0); ctx.lineTo(W, bot);
+  for (let x = W; x >= 0; x -= W / 14) ctx.lineTo(x, bot + Math.sin(x * 0.02 + t * 0.4) * H * 0.012 - hh(Math.floor(x), 2.2) * H * 0.03); ctx.closePath(); ctx.fill();
+  for (let i = 0; i < 16; i++) { const x = W * hh(i, 5.1), y = bot * (0.3 + 0.6 * hh(i, 6.3)), r = W * (0.22 + 0.2 * hh(i, 7.7)); ctx.fillStyle = `rgba(${40 + 30 * hh(i, 8.1) | 0},${50 + 30 * hh(i, 8.1) | 0},${64 + 30 * hh(i, 8.1) | 0},0.55)`; ctx.beginPath(); ctx.ellipse(x + Math.sin(t * 0.3 + i) * W * 0.02, y, r, r * 0.35, 0, 0, TAU); ctx.fill(); }
+  const gl = hh(Math.floor(t / 1.5), 9.9), ph = (t % 1.5) / 1.5; if (gl > 0.3) { const a = Math.max(0, 1 - ph * 3) * 0.5; ctx.globalCompositeOperation = 'lighter'; hzPuff(W * (0.2 + 0.6 * gl), bot * 0.55, W * 0.3, `rgba(190,200,255,${a})`, `rgba(150,170,240,${a * 0.4})`, 'rgba(120,140,220,0)'); ctx.globalCompositeOperation = 'source-over'; }
+  const hz = H * 0.58; ctx.save(); ctx.globalAlpha = 0.34 * Math.min(1, k); const cg = ctx.createLinearGradient(0, bot, 0, hz); cg.addColorStop(0, 'rgba(150,162,180,0.9)'); cg.addColorStop(1, 'rgba(120,130,146,0.2)'); ctx.fillStyle = cg; ctx.fillRect(0, bot - 4, W, Math.max(0, hz - bot + 4));
+  ctx.strokeStyle = 'rgba(210,220,235,0.5)'; ctx.lineWidth = Math.max(1, W * 0.003); for (let i = 0; i < 40; i++) { const x = W * hh(i, 3.3), off = ((t * 1.4 + hh(i, 4.4)) % 1) * (hz - bot); ctx.beginPath(); ctx.moveTo(x, bot + off); ctx.lineTo(x - W * 0.01, Math.min(hz, bot + off + (hz - bot) * 0.25)); ctx.stroke(); } ctx.restore();
+}
+function s7Before(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawEdge(); drawFlash(t); drawActors(false); }
+function s7After(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawActors(true); s7Grade(); }

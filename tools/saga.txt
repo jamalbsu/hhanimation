@@ -1,0 +1,165 @@
+// ---- SAGA: the star the pack carries, the words they trade, and a deeper picture and sound ----
+const hex3 = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+function colAt(keys, t) {
+  if (t <= keys[0][0]) return hex3(keys[0][1]);
+  for (let i = 0; i < keys.length - 1; i++) if (t <= keys[i + 1][0]) { const k = smooth(clamp((t - keys[i][0]) / (keys[i + 1][0] - keys[i][0]))), p = hex3(keys[i][1]), q = hex3(keys[i + 1][1]); return [lerp(p[0], q[0], k), lerp(p[1], q[1], k), lerp(p[2], q[2], k)]; }
+  return hex3(keys[keys.length - 1][1]);
+}
+// the star: it falls, waits on the ground, rides above the pack trailing a ribbon of light, and at last rises home
+const STAR = CFG.star ? { ...CFG.star, D: tab(TAB0.d, CFG.star.from) + 110 } : null;
+function starPos(t) {
+  if (STL < STAR.from) return { f: STAR.D - SD, hg: 60 + 14 * Math.sin(t * 4), held: 0, up: 0 };
+  const up = STAR.release !== undefined && STL > STAR.release ? STL - STAR.release : 0, k = smooth(clamp((STL - STAR.from) / 0.5));
+  return { f: lerp(110, 50, k), hg: lerp(60, 330, k) + 18 * Math.sin(t * 3.1) + up * up * 900, held: 1, up };
+}
+function drawStar(t) {
+  if (!STAR) return; ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const c = colAt(STAR.col, STL), cs = c.map(v => v | 0).join(',');
+  if (STAR.fall !== undefined && STL < STAR.fall) {                  // the meteor streaks down to where it will land
+    const s = clamp((STL - (STAR.fall - 1.25)) / 1.25); if (s <= 0 || !hzVis(STAR.D - SD, 0)) return;
+    const land = P3s(STAR.D - SD, 60, 0), x0 = W * 1.05, y0 = -H * 0.08, e = s * s, hx = lerp(x0, land[0], e), hy = lerp(y0, land[1], e), tx = lerp(x0, land[0], Math.max(0, e - 0.3)), ty = lerp(y0, land[1], Math.max(0, e - 0.3));
+    ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+    const g = ctx.createLinearGradient(tx, ty, hx, hy); g.addColorStop(0, `rgba(${cs},0)`); g.addColorStop(1, `rgba(${cs},0.9)`);
+    ctx.strokeStyle = g; ctx.lineWidth = S * 0.02; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = S * 0.006; ctx.beginPath(); ctx.moveTo(lerp(tx, hx, 0.5), lerp(ty, hy, 0.5)); ctx.lineTo(hx, hy); ctx.stroke();
+    hzPuff(hx, hy, S * 0.07, 'rgba(255,255,255,0.95)', `rgba(${cs},0.5)`, `rgba(${cs},0)`);
+    ctx.globalCompositeOperation = 'source-over'; return;
+  }
+  const p0 = starPos(t), fade = clamp(1 - p0.up / 1.3);
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  if (p0.held && fade > 0) {                                           // the ribbon of light streaming behind
+    const N = 46, pts = [];
+    for (let i = 0; i <= N; i++) { const a = i / N, f = p0.f - i * 34, z = 110 * a * Math.sin(t * 1.9 - i * 0.21), hg = p0.hg * (1 - 0.35 * a) + 55 * a * Math.sin(t * 3.2 - i * 0.33); pts.push(hzVis(f, z) ? [P3s(f, hg, z), hzK(f, hg, z), a] : null); }
+    for (const [w, al, col] of [[30, 0.14, cs], [11, 0.5, cs], [3.2, 0.85, '255,255,255']]) for (let i = 0; i < N; i++) {
+      const p = pts[i], q = pts[i + 1]; if (!p || !q) continue;
+      ctx.strokeStyle = `rgba(${col},${al * fade * (1 - p[2]) })`; ctx.lineWidth = Math.max(0.6, w * p[1] * (1 - 0.8 * p[2])); ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]); ctx.lineTo(q[0][0], q[0][1]); ctx.stroke();
+    }
+    ctx.fillStyle = `rgba(255,255,255,${0.9 * fade})`;
+    for (let i = 3; i < N; i += 4) { const p = pts[i]; if (!p) continue; const tw = Math.max(0, Math.sin(t * 6 + i * 1.9)); if (tw > 0.2) sparkle(p[0][0] + 14 * p[1] * Math.sin(i * 2.7), p[0][1] - 18 * p[1] * Math.cos(i * 1.3), 9 * p[1] * tw * (1 - p[2])); }
+  }
+  if (hzVis(p0.f, 0)) {                                                // the star itself
+    const p = P3s(p0.f, p0.hg, 0), k = hzK(p0.f, p0.hg, 0), pulse = 1 + 0.12 * Math.sin(t * 7);
+    hzPuff(p[0], p[1], 120 * k * pulse, `rgba(${cs},0.7)`, `rgba(${cs},0.25)`, `rgba(${cs},0)`);
+    ctx.fillStyle = `rgba(${cs},0.95)`; ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(t * 0.9); sparkle(0, 0, 46 * k * pulse); ctx.rotate(Math.PI / 4); sparkle(0, 0, 26 * k * pulse); ctx.restore();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p[0], p[1], 9 * k, 0, TAU); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+// speech: the words traded on the run, in comic bubbles that point at whoever speaks
+function sayAnchor(g) { if (g.me) return hzVis(80, 0) ? P3s(80, 270, 0) : null; return tagAnchor(g); }
+function drawSays() {
+  for (const g of CFG.says || []) {
+    const d = STL - g.t0, life = g.t1 - g.t0; if (d < 0 || d > life) continue;
+    const A = sayAnchor(g); if (!A || A[0] < -60 || A[0] > W + 60 || A[1] < 0 || A[1] > H) continue;
+    const pin = backOut(clamp(d / 0.22)), out = 1 - smooth(clamp((d - life + 0.25) / 0.25)), fs = S * (g.size || 0.044);
+    ctx.font = `700 ${Math.round(fs)}px "Comic Sans MS", "Segoe UI", sans-serif`;
+    const lines = g.text.split('|'), tw = Math.max(...lines.map(l => ctx.measureText(l).width)), bw = tw + fs * 1.5, bh = lines.length * fs * 1.25 + fs * 0.85;
+    const ax = clamp(A[0], S * 0.08, W - S * 0.08), bx = clamp(ax - bw * (g.side === -1 ? 0.75 : 0.25), S * 0.03, W - bw - S * 0.03), by = clamp(A[1] - S * 0.11 - bh, H * 0.07, H * 0.82 - bh);
+    const cx = bx + bw / 2, cy = by + bh, tx = clamp(ax, bx + fs * 1.1, bx + bw - fs * 1.1), tip = [lerp(tx, A[0], 0.8), lerp(cy, A[1], 0.8)];
+    ctx.save(); ctx.globalAlpha = out; ctx.translate(cx, cy); ctx.scale(pin, pin); ctx.translate(-cx, -cy); ctx.lineJoin = 'round';
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.roundRect(bx + S * 0.009, by + S * 0.011, bw, bh, fs * 0.7); ctx.fill();
+    ctx.fillStyle = g.gift ? '#fff3c4' : '#ffffff'; ctx.strokeStyle = INK; ctx.lineWidth = S * 0.006;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, fs * 0.7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx - fs * 0.38, cy - S * 0.004); ctx.lineTo(tip[0], tip[1]); ctx.lineTo(tx + fs * 0.38, cy - S * 0.004); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(tx - fs * 0.38, cy); ctx.lineTo(tip[0], tip[1]); ctx.lineTo(tx + fs * 0.38, cy); ctx.stroke();
+    ctx.fillStyle = '#14141c'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    lines.forEach((l, i) => ctx.fillText(l, cx, by + fs * 0.42 + (i + 0.5) * fs * 1.25));
+    if (g.gift) { ctx.fillStyle = '#ffb400'; sparkle(bx + bw - fs * 0.2, by + fs * 0.1, fs * 0.5 * (1 + 0.2 * Math.sin(STL * 9))); }
+    ctx.restore();
+  }
+}
+function drawEchoes() {                                                // a shouted word that rings off the canyon walls
+  for (const e of CFG.echoes || []) for (let k = 3; k >= 0; k--) {
+    const d = STL - e.t - k * 0.28; if (d < 0 || d > 1.1) continue;
+    const a = (1 - k * 0.26) * (1 - smooth(clamp((d - 0.7) / 0.4))), sz = S * (e.size || 0.13) * (1 + 0.38 * k) * backOut(clamp(d / 0.2));
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(W * (e.x || 0.5), H * (e.y || 0.3)); ctx.rotate(-5 * DEG); ctx.font = FONT(sz); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    if (k === 0) { ctx.lineWidth = sz * 0.13; ctx.strokeStyle = INK; ctx.strokeText(e.text, 0, 0); ctx.fillStyle = '#ffffff'; ctx.fillText(e.text, 0, 0); }
+    else { ctx.lineWidth = sz * 0.035; ctx.strokeStyle = ACC[2]; ctx.strokeText(e.text, 0, 0); }
+    ctx.restore();
+  }
+}
+// depth: cloud shadows on the land, sun rays in the air, and grass whipping past right in front of the lens
+function drawCloudShadows(t) {
+  if (!CFG.depth) return;
+  for (let i = 0; i < 7; i++) {
+    const span = 9000, f = ((hh(i, 1.2) * span - SD + t * 70) % span + span) % span - 3000, z = (hh(i, 2.2) - 0.5) * 5200; if (!hzVis(f, z)) continue;
+    const p = P3s(f, 0, z), r = (700 + 500 * hh(i, 3.2)) * hzK(f, 0, z); if (r < 4) continue;
+    ctx.save(); ctx.translate(p[0], p[1]); ctx.scale(1, 0.36 + 0.5 * Math.abs(ST));
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r); g.addColorStop(0, 'rgba(12,10,34,0.24)'); g.addColorStop(0.6, 'rgba(12,10,34,0.14)'); g.addColorStop(1, 'rgba(12,10,34,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.restore();
+  }
+}
+function drawSunRays(t) {
+  const R = CFG.rays; if (!R) return; const cx = W * R.x, cy = H * R.y, L = Math.hypot(W, H) * 1.1;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 8; i++) {
+    const a = (18 + i * 19 + 6 * Math.sin(t * 0.3 + i * 1.7)) * DEG, w = (0.025 + 0.03 * hh(i, 4.4)) * (1 + 0.3 * Math.sin(t * 0.7 + i));
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, L); g.addColorStop(0, `rgba(${R.col},${R.a * 1.6})`); g.addColorStop(0.5, `rgba(${R.col},${R.a * 0.6})`); g.addColorStop(1, `rgba(${R.col},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a - w) * L, cy + Math.sin(a - w) * L); ctx.lineTo(cx + Math.cos(a + w) * L, cy + Math.sin(a + w) * L); ctx.closePath(); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+function drawWhips(t) {
+  if (!CFG.depth) return; const sf = RC * RC; if (sf < 0.2) return;
+  const v = tab(TAB0.v, STL), col = CFG.whipCol || '34,24,10', span = W * 1.7;
+  for (let i = 0; i < 8; i++) {
+    const x = W * 1.2 - ((SD * sc * 2.4 + hh(i, 1.7) * span) % span), h = H * (0.1 + 0.13 * hh(i, 2.7)), lean = -clamp(v / 900) * h * 0.9;
+    for (let m = 0; m < 3; m++) {                                      // three smeared copies read as motion blur
+      ctx.fillStyle = `rgba(${col},${0.34 * sf / (m + 1)})`; const xx = x + m * S * 0.035;
+      for (let b = 0; b < 6; b++) { const bx = xx + (b - 2.5) * S * 0.022, bh = h * (0.6 + 0.4 * hh(i * 7 + b, 3.3)), bw = S * 0.02; ctx.beginPath(); ctx.moveTo(bx - bw, H); ctx.quadraticCurveTo(bx + lean * 0.3, H - bh * 0.6, bx + lean, H - bh); ctx.quadraticCurveTo(bx + lean * 0.4 + bw, H - bh * 0.5, bx + bw, H); ctx.closePath(); ctx.fill(); }
+    }
+  }
+}
+// flamingos: they stand in the shallows, then rise all at once in a pink cloud
+const FLAM = CFG.flamingos ? (() => { const r = rng(88), a = []; for (let i = 0; i < CFG.flamingos.n; i++) a.push({ D: tab(TAB0.d, CFG.flamingos.t0) + (r() - 0.25) * 2600, z: (r() - 0.5) * 3000, tk: CFG.flamingos.t0 + r() * 1.3, s: 0.8 + r() * 0.5, ph: r() * TAU }); return a.filter(b => Math.abs(b.z) > 330); })() : [];
+function drawFlamingos(t) {
+  for (const b of FLAM) {
+    const age = STL - b.tk, fly = age > 0, f = fly ? b.D - tab(TAB0.d, b.tk) + 150 * age : b.D - SD, hg = fly ? 60 + 250 * age + 40 * Math.sin(age * 3 + b.ph) : 60, z = b.z + (fly ? 60 * age * Math.sin(b.ph) : 0);
+    if (!hzVis(f, z) || hg > 1600) continue; const p = P3s(f, hg, z), s = 26 * b.s * hzK(f, hg, z); if (s < 0.8) continue;
+    ctx.save(); ctx.translate(p[0], p[1]);
+    if (!fly) { ctx.strokeStyle = '#e88aa8'; ctx.lineWidth = Math.max(1, s * 0.09); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, s * 2.2); ctx.stroke(); }
+    else { const fl = Math.sin(t * 13 + b.ph); ctx.fillStyle = '#ff9fc0'; for (const sg of [-1, 1]) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(sg * s * 1.9, -s * 1.3 * fl); ctx.lineTo(sg * s * 0.5, s * 0.25); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#2a1a22'; ctx.beginPath(); ctx.arc(sg * s * 1.75, -s * 1.2 * fl, s * 0.22, 0, TAU); ctx.fill(); ctx.fillStyle = '#ff9fc0'; } }
+    ctx.fillStyle = '#ff7fae'; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.85, s * 0.5, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#ff8fb8'; ctx.lineWidth = Math.max(1, s * 0.17); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(s * 0.6, -s * 0.1); ctx.quadraticCurveTo(s * 1.3, -s * (fly ? 0.3 : 1.6), s * (fly ? 1.9 : 0.9), -s * (fly ? 0.2 : 1.9)); ctx.stroke();
+    ctx.restore();
+  }
+}
+// the sky answers: an aurora, and the pack drawn in stars
+function drawAurora(t) {
+  const k = kv(CFG.aurora, 0); if (k <= 0.01) return; ctx.globalCompositeOperation = 'lighter'; const step = Math.ceil(W / 54);
+  for (let i = 0; i < 4; i++) for (let x = 0; x < W; x += step) {
+    const y0 = H * (0.05 + 0.05 * i + 0.07 * Math.sin(x * 0.0042 + t * 0.5 + i * 1.9) + 0.03 * Math.sin(x * 0.011 - t * 0.8 + i)), h = H * (0.2 + 0.09 * Math.sin(x * 0.006 + t * 0.6 + i * 2.3));
+    const cc = i % 2 ? '170,110,255' : '90,255,170', g = ctx.createLinearGradient(0, y0, 0, y0 + h); g.addColorStop(0, `rgba(${cc},0)`); g.addColorStop(0.25, `rgba(${cc},${0.2 * k})`); g.addColorStop(1, `rgba(${cc},0)`);
+    ctx.fillStyle = g; ctx.fillRect(x, y0, step + 1, h);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+const CONSTEL = { pts: [[0, 0.56], [0.12, 0.43], [0.23, 0.4], [0.41, 0.34], [0.58, 0.36], [0.7, 0.28], [0.8, 0.21], [0.92, 0.3], [0.8, 0.37], [0.62, 0.5], [0.74, 0.74], [0.4, 0.52], [0.31, 0.62], [0.2, 0.8]],
+  lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [9, 11], [11, 2], [2, 12], [12, 13], [4, 9]] };
+function drawConstellation(t) {
+  if (!CFG.constel) return; const d = STL - CFG.constel.t0; if (d < 0) return;
+  const sz = S * 0.62, x0 = W / 2 - sz / 2, y0 = H * 0.1, P = CONSTEL.pts.map(([x, y]) => [x0 + x * sz, y0 + y * sz * 0.9]);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  CONSTEL.lines.forEach(([a, b], i) => { const k = clamp((d - 0.4 - i * 0.12) / 0.3); if (k <= 0) return; ctx.strokeStyle = `rgba(200,225,255,${0.55 * k})`; ctx.lineWidth = S * 0.004; ctx.beginPath(); ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(lerp(P[a][0], P[b][0], k), lerp(P[a][1], P[b][1], k)); ctx.stroke(); });
+  P.forEach((p, i) => { const k = clamp((d - i * 0.1) / 0.25); if (k <= 0) return; ctx.fillStyle = `rgba(255,255,255,${k})`; sparkle(p[0], p[1], S * 0.022 * k * (1 + 0.25 * Math.sin(t * 5 + i * 2.1))); });
+  const lk = clamp((d - 2.4) / 0.6); if (lk > 0) { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = lk; ctx.fillStyle = '#dfeaff'; ctx.textAlign = 'center'; ctx.font = `600 ${Math.round(S * 0.03)}px "Segoe UI", system-ui, sans-serif`; try { ctx.letterSpacing = `${Math.round(S * 0.014)}px`; } catch (e) {} ctx.fillText(CFG.constel.label || 'THE PANTHERS PACK', W / 2, y0 + sz * 0.86); try { ctx.letterSpacing = '0px'; } catch (e) {} }
+  ctx.restore();
+}
+function sagaSky(t) {}
+function sagaTop(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawAurora(t); drawConstellation(t); }
+function sagaBefore(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawCloudShadows(t); }
+function sagaAfter(t) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawFlamingos(t); drawStar(t); drawSunRays(t); drawWhips(t); }
+// ---- sound: voices for the bubbles, the star's four-note theme, whooshes as herds pass, echoes in the canyon ----
+function saySnd(at, f, v) {
+  for (const [dt, m] of [[0, 1], [0.09, 1.26], [0.19, 0.94]]) { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(f * m, at + dt); o.frequency.exponentialRampToValueAtTime(f * m * 1.12, at + dt + 0.07);
+    g.gain.setValueAtTime(0.0001, at + dt); g.gain.exponentialRampToValueAtTime(0.09 * v, at + dt + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, at + dt + 0.085); o.connect(g); g.connect(master); g.connect(wet); o.start(at + dt); o.stop(at + dt + 0.1); }
+}
+(() => {
+  (CFG.says || []).forEach((g, i) => EVENTS.push({ t: g.t0, k: 'say', f: g.me ? 620 : 300 + 90 * (i % 4), v: 1 }));
+  for (const e of CFG.echoes || []) for (let k = 0; k < 4; k++) EVENTS.push({ t: e.t + k * 0.28, k: 'say', f: 520, v: 1 - k * 0.26 });
+  const theme = t => { if (MUSIC) [0, 7, 12, 19].forEach((s, i) => EVENTS.push({ t: t + i * 0.13, k: 'note', inst: 'bell', m: MUSIC.root + 12 + s, len: 0.9, v: 0.9 })); };
+  if (STAR && STAR.from > 0) theme(STAR.from); for (const t of CFG.motifs || []) theme(t);
+  for (const h of HERDS) if (h.dir < 0) { let prev = herdFx(h, h.members[0], 0); for (let t = 0.05; t < STORY - 0.3; t += 0.05) { const fx = herdFx(h, h.members[0], t); if (prev > 0 && fx <= 0) { EVENTS.push({ t: t - 0.15, k: 'whoosh' }); EVENTS.push({ t: t + 0.35, k: 'whoosh' }); } prev = fx; } }
+  if (CFG.echoHoof) for (const e of EVENTS.filter(e => e.k === 'hoof')) { EVENTS.push({ ...e, t: e.t + 0.17, v: e.v * 0.55 }); EVENTS.push({ ...e, t: e.t + 0.34, v: e.v * 0.28 }); }
+  if (CFG.flamingos) for (let i = 0; i < 14; i++) EVENTS.push({ t: CFG.flamingos.t0 + i * 0.11, k: 'whoosh' });
+})();

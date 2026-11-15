@@ -1,0 +1,235 @@
+// ---- BLITZ: a bold flat comic layer over the painted film — impact words, speed lines, halftone, callouts, a speed meter ----
+const ACC = CFG.accent || ['#ffe600', '#ff2e88', '#14e0ff'];   // pop yellow, hot magenta, electric cyan
+const INK = '#0b0b0f';
+const P3s = (f, hg, z) => { const q = pr(f, -hg, z); return [ox + CAMX + q[0] * sc, oy + CAMY + q[1] * sc]; };
+const backOut = s => { const c = 1.9; return 1 + (c + 1) * Math.pow(s - 1, 3) + c * Math.pow(s - 1, 2); };
+const kv = (k, d) => k ? keyVal(k, STL) : d;
+const ENDAT = STORY - (CFG.endCard || 2.2);
+function punchAt(s) { let p = 0; for (const t0 of CFG.flashes || []) { const d = s - t0; if (d > 0 && d < 0.6) p = Math.max(p, 0.09 * Math.exp(-d * 7)); } return p; }
+
+// sound cues for the graphics
+(() => {
+  for (const p of CFG.pops || []) EVENTS.push({ t: p.t, k: p.boom ? 'boom' : 'hit' });
+  for (const t of CFG.flashes || []) EVENTS.push({ t: Math.max(0, t - 0.02), k: 'boom' });
+  for (const t of CFG.slashes || []) EVENTS.push({ t, k: 'whoosh' });
+  for (const t of CFG.trumpets || []) EVENTS.push({ t, k: 'trumpet' });
+  if (CFG.wall) for (let t = 0.05; t < STORY - 0.2; t += 0.11) { const d = -keyVal(CFG.wall.fx, t); EVENTS.push({ t, k: 'rumble', v: 0.2 * clamp(1 - (d - 600) / 2400) + 0.03 }); }
+  EVENTS.push({ t: ENDAT, k: 'boom' });
+})();
+
+// the avalanche: a tumbling wall of snow that chases the pack
+function drawWall(t) {
+  const Wl = CFG.wall; if (!Wl) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const fx0 = keyVal(Wl.fx, STL), dc = Wl.col || [244, 248, 255], items = [];
+  for (let i = 0; i < 30; i++) for (let l = 0; l < 4; l++) {
+    const z = -2100 + i * 120 + (hh(i, l + 1) - 0.5) * 70, f = fx0 - l * 190 - 70 * hh(i, l + 7) + 45 * Math.sin(t * 2.3 + i + l);
+    const hg = 40 + l * 260 + 140 * hh(i, l + 3) + 50 * Math.sin(t * 3.1 + i * 0.7);
+    if (tooClose(f, z)) continue;
+    items.push({ f, z, hg, l, i, d: f * RS - z * RC });
+  }
+  items.sort((a, b) => b.d - a.d);
+  const k0 = camK(0, PIV, 0);
+  for (const it of items) {
+    const p = P3s(it.f, it.hg, it.z), r = (230 + 110 * it.l + 90 * hh(it.i, it.l + 9)) * sc * camK(it.f, -it.hg, it.z) / k0;
+    if (r <= 0 || p[0] < -r || p[0] > W + r || p[1] < -r || p[1] > H + r) continue;
+    const sh = 0.86 + 0.14 * hh(it.i, it.l + 5), g = ctx.createRadialGradient(p[0] - r * 0.25, p[1] - r * 0.3, r * 0.1, p[0], p[1], r);
+    g.addColorStop(0, `rgba(${dc[0]},${dc[1]},${dc[2]},1)`); g.addColorStop(0.5, `rgba(${dc[0] * sh | 0},${dc[1] * sh | 0},${dc[2]},0.97)`); g.addColorStop(0.8, `rgba(150,170,205,0.9)`); g.addColorStop(0.93, `rgba(120,140,180,0.45)`); g.addColorStop(1, 'rgba(120,140,180,0)');
+    ctx.fillStyle = g; ctx.fillRect(p[0] - r, p[1] - r, 2 * r, 2 * r);
+  }
+  // snow spray flying ahead of the wall
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let i = 0; i < 90; i++) {
+    const age = frac(t * 0.9 + hh(i, 2.2)), f = fx0 + 80 + age * 520, z = -1800 + hh(i, 3.3) * 3000, hg = 40 + 420 * Math.sin(Math.PI * age) * hh(i, 4.4);
+    if (tooClose(f, z)) continue;
+    const p = P3s(f, hg, z), r = (3 + 6 * hh(i, 5.5)) * sc * camK(f, -hg, z) / k0;
+    ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(0.5, r), 0, TAU); ctx.fill();
+  }
+}
+
+function speedLines(k) {
+  if (k <= 0.01) return;
+  const cx = W * 0.5, cy = H * 0.47, R1 = Math.hypot(W, H) * 0.62, n = 64, fr = Math.floor(STL * 20);
+  ctx.fillStyle = `rgba(255,255,255,${0.5 * k})`; ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = TAU * (i + 0.8 * hh(i + fr * 7, 1.9)) / n, len = R1 * (0.18 + 0.32 * hh(i, (fr % 13) + 2.1)) * (0.6 + 0.6 * k), w = 0.006 + 0.012 * hh(i * 3 + fr, 3.3);
+    ctx.moveTo(cx + Math.cos(a) * R1, cy + Math.sin(a) * R1); ctx.lineTo(cx + Math.cos(a + w) * R1, cy + Math.sin(a + w) * R1);
+    ctx.lineTo(cx + Math.cos(a + w / 2) * (R1 - len), cy + Math.sin(a + w / 2) * (R1 - len)); ctx.closePath();
+  }
+  ctx.fill();
+}
+function sandStreaks(k) {
+  if (k <= 0.01) return;
+  ctx.strokeStyle = `rgba(255,226,170,${0.35 * k})`; ctx.lineWidth = Math.max(1, S * 0.0022); ctx.beginPath();
+  for (let i = 0; i < 160; i++) {
+    const y = hh(i, 1.7) * H, x = W - ((STL * (1.6 + 1.4 * hh(i, 2.9)) * W + hh(i, 3.7) * W) % (W * 1.3)), l = W * (0.04 + 0.08 * hh(i, 4.1));
+    ctx.moveTo(x, y); ctx.lineTo(x + l, y - l * 0.06);
+  }
+  ctx.stroke();
+}
+function halftone(k, color) {
+  if (k <= 0.01) return;
+  const step = Math.max(9, Math.round(S * 0.02)), cx = W / 2, cy = H / 2;
+  ctx.fillStyle = color; ctx.globalAlpha = 0.75 * Math.min(1, k); ctx.beginPath();
+  for (let y = step / 2, row = 0; y < H + step; y += step * 0.866, row++) for (let x = (row % 2) * step / 2; x < W + step; x += step) {
+    const e = clamp((Math.hypot((x - cx) / cx, (y - cy) / cy) - (1.2 - 0.5 * Math.min(k, 1.6))) / 0.5); if (e <= 0) continue;
+    const r = step * 0.52 * e; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+  }
+  ctx.fill(); ctx.globalAlpha = 1;
+}
+function starburst(x, y, rx, ry, n, seed, fill, lw) {
+  ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) { const a = TAU * i / (n * 2) + seed, rr = i % 2 ? 0.66 + 0.1 * hh(i, seed) : 1 + 0.14 * hh(i, seed + 1); ctx.lineTo(x + Math.cos(a) * rx * rr, y + Math.sin(a) * ry * rr); }
+  ctx.closePath(); ctx.lineJoin = 'miter';
+  ctx.save(); ctx.translate(S * 0.012, S * 0.014); ctx.fillStyle = INK; ctx.fill(); ctx.restore();
+  ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = INK; ctx.stroke();
+}
+const FONT = px => `${Math.round(px)}px Impact, "Haettenschweiler", "Arial Black", sans-serif`;
+function comicText(txt, x, y, size, fill, rot, maxW) {
+  ctx.save(); ctx.font = FONT(size);
+  const tw = ctx.measureText(txt).width; if (maxW && tw > maxW) { size *= maxW / tw; ctx.font = FONT(size); }
+  ctx.translate(x, y); ctx.rotate(rot); ctx.transform(1, 0, -0.14, 1, 0, 0);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  ctx.fillStyle = INK; ctx.fillText(txt, size * 0.07, size * 0.08);
+  ctx.lineWidth = size * 0.13; ctx.strokeStyle = INK; ctx.strokeText(txt, 0, 0);
+  ctx.fillStyle = fill; ctx.fillText(txt, 0, 0);
+  ctx.restore(); return size;
+}
+function drawPops() {
+  for (const p of CFG.pops || []) {
+    const life = p.life || 1.15, s = (STL - p.t) / life; if (s < 0 || s > 1) continue;
+    const pin = backOut(clamp((STL - p.t) / 0.22)), out = 1 - smooth(clamp((s - 0.8) / 0.2));
+    let sz = S * (p.size || 0.15) * Math.max(0.01, pin) * (1 + 0.07 * s);
+    const x = W * (p.x === undefined ? 0.5 : p.x) + Math.sin(STL * 70) * S * 0.005 * (1 - s), y = H * (p.y === undefined ? 0.3 : p.y);
+    ctx.font = FONT(sz); const tw = Math.min(ctx.measureText(p.text).width, W * 0.84);
+    ctx.globalAlpha = out;
+    if (p.burst !== false) starburst(x, y, Math.max(sz * 1.15, tw * 0.66), sz * 0.98, 12, p.t * 3.1, p.bg || ACC[1], S * 0.007);
+    comicText(p.text, x, y, sz, p.fg || ACC[0], (p.rot === undefined ? -6 : p.rot) * DEG, W * 0.84);
+    ctx.globalAlpha = 1;
+  }
+}
+function tagAnchor(g) {
+  if (g.wall) { const f = keyVal(CFG.wall.fx, STL) + 120; return tooClose(f, 0) ? null : P3s(f, 420, g.z || 0); }
+  const h = HERDS[g.herd], mi = g.m || 0, m = h.members[mi], size = m.size || 1, fx = herdFx(h, m, STL), z = herdZ(h, m, mi, STL);
+  if (tooClose(fx, z) || fx < -4500 || fx > 6500) return null;
+  return P3s(fx + h.dir * h.sp.L * 0.4 * size, (h.sp.legU + h.sp.legD + h.sp.H * 1.5) * size, z);
+}
+function drawTags() {
+  for (const g of CFG.tags || []) {
+    const s = (STL - g.t0) / (g.t1 - g.t0); if (s < 0 || s > 1) continue;
+    const A = tagAnchor(g); if (!A || A[0] < -40 || A[0] > W + 40 || A[1] < H * 0.04 || A[1] > H * 0.96) continue;
+    const a = smooth(clamp(s / 0.08)) * (1 - smooth(clamp((s - 0.9) / 0.1))), grow = smooth(clamp(s / 0.14));
+    const f1 = S * 0.056, f2 = S * 0.026, pad = S * 0.022;
+    ctx.font = FONT(f1); const w1 = ctx.measureText(g.label).width;
+    ctx.font = `800 ${Math.round(f2)}px "Arial Black", "Segoe UI", sans-serif`; const w2 = g.sub ? ctx.measureText(g.sub).width : 0;
+    const bw = Math.min(W * 0.9, Math.max(w1, w2) + pad * 2.4), bh = f1 * 1.02 + (g.sub ? f2 * 1.55 : 0) + pad;
+    const side = g.side || (A[0] > W * 0.55 ? -1 : 1);
+    const bx = clamp(side > 0 ? A[0] + S * 0.06 : A[0] - S * 0.06 - bw, S * 0.03, W - bw - S * 0.03), by = clamp(A[1] - S * 0.16 - bh, H * 0.07, H * 0.8 - bh);
+    ctx.save(); ctx.globalAlpha = a;
+    const ex = side > 0 ? bx + S * 0.02 : bx + bw - S * 0.02, ey = by + bh;
+    ctx.lineCap = 'round'; ctx.strokeStyle = INK; ctx.lineWidth = S * 0.011; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(lerp(A[0], ex, grow), lerp(A[1], ey, grow)); ctx.stroke();
+    ctx.strokeStyle = ACC[0]; ctx.lineWidth = S * 0.005; ctx.stroke();
+    const pu = frac(STL * 1.4); ctx.globalAlpha = a * (1 - pu); ctx.lineWidth = S * 0.005; ctx.beginPath(); ctx.arc(A[0], A[1], S * (0.02 + 0.05 * pu), 0, TAU); ctx.stroke(); ctx.globalAlpha = a;
+    ctx.fillStyle = ACC[0]; ctx.beginPath(); ctx.arc(A[0], A[1], S * 0.011, 0, TAU); ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = S * 0.004; ctx.stroke();
+    ctx.translate(bx, by); ctx.transform(1, 0, -0.1, 1, 0, 0);
+    const ww = bw * grow;
+    ctx.fillStyle = INK; ctx.fillRect(S * 0.01, S * 0.012, ww, bh);
+    ctx.fillStyle = g.bg || ACC[0]; ctx.fillRect(0, 0, ww, bh);
+    ctx.fillStyle = ACC[1]; ctx.fillRect(0, 0, Math.min(ww, S * 0.014), bh);
+    if (grow > 0.7) {
+      ctx.globalAlpha = a * clamp((grow - 0.7) / 0.3); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillStyle = INK; ctx.font = FONT(f1); ctx.fillText(g.label, pad * 1.4, pad * 0.55);
+      if (g.sub) { ctx.font = `800 ${Math.round(f2)}px "Arial Black", "Segoe UI", sans-serif`; ctx.fillStyle = '#1d1d24'; ctx.fillText(g.sub, pad * 1.4, pad * 0.55 + f1 * 1.06); }
+    }
+    ctx.restore();
+  }
+}
+function drawFlash() {
+  for (const t0 of CFG.flashes || []) {
+    const d = STL - t0; if (d < 0 || d > 0.5) continue;
+    if (d < 0.075) { ctx.globalCompositeOperation = 'difference'; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); }
+    else { ctx.globalCompositeOperation = 'color'; ctx.globalAlpha = 0.65 * (1 - (d - 0.075) / 0.425); ctx.fillStyle = ACC[1]; ctx.fillRect(0, 0, W, H); }
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  }
+}
+function drawSlashes() {
+  for (const t0 of CFG.slashes || []) {
+    const d = (STL - t0) / 0.42; if (d < 0 || d > 1) continue;
+    const L = Math.hypot(W, H), x = lerp(-L * 0.9, L * 0.9, d * d * (3 - 2 * d));
+    ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(-24 * DEG);
+    [[ACC[1], -0.13, 0.06], [ACC[0], 0, 0.15], [INK, 0.1, 0.035], [ACC[2], 0.15, 0.025]].forEach(([c, o, w]) => { ctx.fillStyle = c; ctx.fillRect(x + o * L - w * L / 2, -L, w * L, 2 * L); });
+    ctx.restore();
+  }
+}
+function drawHUD() {
+  const a = smooth(clamp((STL - 2.4) / 0.4)) * (1 - smooth(clamp((STL - ENDAT) / 0.25))); if (a <= 0) return;
+  const kmh = Math.max(0, Math.round(tab(TAB0.v, STL) * 0.088 + 1.4 * Math.sin(STL * 6.3) + 0.8 * Math.sin(STL * 17)));
+  const bar = H * 0.035, x0 = S * 0.05, y0 = H - bar - S * 0.075;
+  ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  ctx.font = FONT(S * 0.105); const nw = ctx.measureText('00').width;
+  ctx.save(); ctx.translate(x0, y0); ctx.transform(1, 0, -0.14, 1, 0, 0);
+  ctx.lineWidth = S * 0.012; ctx.strokeStyle = INK; ctx.strokeText(String(kmh), 0, 0); ctx.fillStyle = '#fff'; ctx.fillText(String(kmh), 0, 0);
+  ctx.font = FONT(S * 0.034); ctx.lineWidth = S * 0.008; ctx.strokeText('KM/H', nw + S * 0.02, -S * 0.012); ctx.fillStyle = ACC[0]; ctx.fillText('KM/H', nw + S * 0.02, -S * 0.012);
+  ctx.font = `800 ${Math.round(S * 0.018)}px "Arial Black", "Segoe UI", sans-serif`; ctx.fillStyle = '#fff'; ctx.strokeText('PACK SPEED', nw + S * 0.02, -S * 0.058); ctx.fillText('PACK SPEED', nw + S * 0.02, -S * 0.058);
+  const segs = 14, on = clamp(kmh / 85) * segs;
+  for (let i = 0; i < segs; i++) { ctx.fillStyle = INK; ctx.fillRect(i * S * 0.021 - S * 0.002, S * 0.016, S * 0.018, S * 0.016); ctx.fillStyle = i < on ? (i >= 10 ? ACC[1] : ACC[0]) : 'rgba(255,255,255,0.25)'; ctx.fillRect(i * S * 0.021, S * 0.018, S * 0.014, S * 0.012); }
+  ctx.restore();
+  // series badge, top left
+  const by = bar + S * 0.035, fs = S * 0.034;
+  ctx.font = FONT(fs); const w1 = ctx.measureText('PANTHERA').width, w2 = ctx.measureText('EP.' + CFG.ep).width;
+  ctx.translate(x0, by); ctx.transform(1, 0, -0.18, 1, 0, 0); ctx.textBaseline = 'middle';
+  ctx.fillStyle = INK; ctx.fillRect(0, -fs * 0.72, w1 + fs * 0.7, fs * 1.44);
+  ctx.fillStyle = '#fff'; ctx.fillText('PANTHERA', fs * 0.35, 0);
+  ctx.fillStyle = ACC[0]; ctx.fillRect(w1 + fs * 0.7, -fs * 0.72, w2 + fs * 0.7, fs * 1.44);
+  ctx.fillStyle = INK; ctx.fillText('EP.' + CFG.ep, w1 + fs * 1.05, 0);
+  ctx.restore();
+}
+function drawTitle() {                                             // a comic title band that slams in over the running pack
+  const s0 = STL - 0.12, a = 1 - smooth(clamp((STL - 2.5) / 0.3)); if (s0 < 0 || a <= 0) return;
+  const pin = backOut(clamp(s0 / 0.3)), y = H * 0.25, sz = S * 0.16;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, y); ctx.rotate(-6 * DEG);
+  const bw = Math.hypot(W, H) * smooth(clamp(s0 / 0.22)), bh = sz * 1.75;
+  ctx.fillStyle = INK; ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
+  ctx.fillStyle = ACC[1]; ctx.fillRect(-bw / 2, -bh / 2, bw, bh * 0.07); ctx.fillStyle = ACC[2]; ctx.fillRect(-bw / 2, bh / 2 - bh * 0.07, bw, bh * 0.07);
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = a * clamp(s0 / 0.15);
+  const sm = S * 0.034; ctx.font = FONT(sm); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = ACC[2];
+  try { ctx.letterSpacing = `${Math.round(S * 0.01)}px`; } catch (e) {}
+  ctx.translate(W / 2, y); ctx.rotate(-6 * DEG); ctx.fillText(`PANTHERA  ·  EPISODE ${CFG.ep}`, 0, -sz * 0.6);
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = a;
+  comicText(CFG.title.toUpperCase(), W / 2, y + sz * 0.16, sz * Math.max(0.01, pin), ACC[0], -6 * DEG, W * 0.86);
+  ctx.restore();
+}
+function drawEnd() {                                               // the run goes on behind a TO BE CONTINUED panel
+  const s = STL - ENDAT; if (s < 0) return;
+  const k = smooth(clamp(s / 0.22));
+  ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 0.55 * k; ctx.fillStyle = ACC[0]; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  halftone(1.5 * k, INK);
+  const y = H * 0.5, sz = S * 0.12;
+  ctx.save(); ctx.translate(W / 2, y); ctx.rotate(-8 * DEG);
+  const bw = Math.hypot(W, H) * smooth(clamp(s / 0.2)), bh = sz * 2.6;
+  ctx.fillStyle = INK; ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
+  ctx.fillStyle = ACC[1]; ctx.fillRect(-bw / 2, -bh / 2, bw, bh * 0.06); ctx.fillRect(-bw / 2, bh / 2 - bh * 0.06, bw, bh * 0.06);
+  ctx.restore();
+  if (s > 0.12) {
+    const pin = backOut(clamp((s - 0.12) / 0.3));
+    comicText('TO BE CONTINUED', W / 2, y - sz * 0.25, sz * Math.max(0.01, pin), ACC[0], -8 * DEG, W * 0.82);
+    if (CFG.next) { ctx.save(); ctx.globalAlpha = clamp((s - 0.45) / 0.25); ctx.translate(W / 2, y); ctx.rotate(-8 * DEG); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = FONT(S * 0.044); ctx.fillStyle = '#fff'; const nx = Math.sin(STL * 9) * S * 0.006; ctx.fillText(CFG.next + '  ▶▶', nx, sz * 0.72); ctx.restore(); }
+  }
+}
+function drawPop(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  drawFlash();
+  sandStreaks(kv(CFG.sand, 0));
+  speedLines(kv(CFG.lines, 0.3));
+  halftone(kv(CFG.tone, 0.45), CFG.toneCol || ACC[1]);
+  drawTags();
+  drawPops();
+  drawSlashes();
+  drawHUD();
+  drawTitle();
+  drawEnd();
+}

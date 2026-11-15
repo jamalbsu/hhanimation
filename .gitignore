@@ -1,0 +1,27 @@
+# Rendered video and audio: far too big for git, and the published copies are on YouTube.
+videos/
+renders/
+*.mp4
+*.webm
+*.mov
+*.wav
+tools/hf-work/
+
+# Python and Node environments and build output (rebuilt from the project files)
+manim-test/.venv/
+manim-test/media/
+__pycache__/
+node_modules/
+site/dist/
+
+# Local-only settings and logs
+.claude/settings.local.json
+*.log
+.DS_Store
+Thumbs.db
+
+# Never commit keys
+*.pem
+*.key
+id_*
+*happyhillz*.pub
