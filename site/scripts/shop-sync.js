@@ -44,12 +44,37 @@ for ($page = 1; $page <= 20; $page++) {
   foreach ($r['data'] ?? [] as $p) $products[] = $p;
   if ($page >= (int)($r['last_page'] ?? 1)) break;
 }
-$shipping = [];
+// What Printify actually charges for standard US shipping. Its catalog shipping table can be out of date
+// (it said $3.99 + $2.09 for the tee; orders cost $5.35 + $2.40), so ask the order calculator for 1 and 2 of
+// one variant from each group of variants the table prices alike. The price was the same to every state.
+function pfPost($path, $body) {
+  global $k;
+  $ch = curl_init('https://api.printify.com/v1/' . $path);
+  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 40, CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($body),
+    CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $k['printify_token'], 'User-Agent: PHP-shop/1.0', 'Content-Type: application/json']]);
+  $raw = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+  if ($code !== 200) { echo json_encode(['error' => "Printify answered HTTP $code for $path", 'body' => substr((string)$raw, 0, 300)]); exit; }
+  return json_decode((string)$raw, true);
+}
+$addr = ['first_name' => 'Price', 'last_name' => 'Check', 'email' => 'price-check@example.com', 'phone' => '+18165550100', 'country' => 'US', 'region' => 'MO', 'address1' => '1 Main St', 'address2' => '', 'city' => 'Kansas City', 'zip' => '64105'];
+$shipping = []; $measured = [];
 foreach ($products as $p) {
   $key = $p['blueprint_id'] . '-' . $p['print_provider_id'];
   if (!isset($shipping[$key])) $shipping[$key] = pf("catalog/blueprints/{$p['blueprint_id']}/print_providers/{$p['print_provider_id']}/shipping.json");
+  $groups = [];
+  foreach ($p['variants'] as $v) {
+    if (!$v['is_enabled']) continue;
+    $g = 'none';
+    foreach ($shipping[$key]['profiles'] ?? [] as $i => $prof) if (in_array($v['id'], $prof['variant_ids'] ?? [], true) && in_array('US', $prof['countries'] ?? [], true)) { $g = (string)$i; break; }
+    $groups[$g][] = $v['id'];
+  }
+  foreach ($groups as $ids) {
+    $cost = [];
+    foreach ([1, 2] as $q) $cost[$q] = (int)(pfPost("shops/{$shop['id']}/orders/shipping.json", ['line_items' => [['product_id' => $p['id'], 'variant_id' => $ids[0], 'quantity' => $q]], 'address_to' => $addr])['standard'] ?? 0);
+    foreach ($ids as $id) $measured[$p['id']][$id] = [$cost[1], $cost[2] - $cost[1]];
+  }
 }
-echo json_encode(['shop' => ['id' => $shop['id'], 'title' => $shop['title'], 'channel' => $shop['sales_channel'] ?? ''], 'products' => $products, 'shipping' => $shipping]);
+echo json_encode(['shop' => ['id' => $shop['id'], 'title' => $shop['title'], 'channel' => $shop['sales_channel'] ?? ''], 'products' => $products, 'shipping' => $shipping, 'measured' => $measured]);
 `;
   const opts = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', ...(PORT ? ['-p', PORT] : [])];
   return new Promise((resolve, reject) => {
@@ -100,14 +125,13 @@ function describe(html) {
 }
 
 // ---- 3. one product -> what the site needs ---------------------------------------
-function shippingFor(raw, variantId, country = 'US') {
-  for (const p of raw?.profiles || []) {
-    if ((p.variant_ids || []).includes(variantId) && (p.countries || []).includes(country)) return [p.first_item.cost, p.additional_items.cost];
-  }
-  return null;
-}
+// standard US shipping as Printify's order calculator priced it: [first item, each additional item], in cents
+const shippingFor = (measured, variantId) => {
+  const c = measured?.[variantId];
+  return c && c[0] > 0 && c[1] >= 0 ? c : null;
+};
 
-function shape(p, shipRaw) {
+function shape(p, measured) {
   // A variant's option values aren't always in the product's option order (the tee lists Sizes, Colors but
   // its variants say [color, size]), so each value is put back under the option it belongs to.
   const owner = new Map();
@@ -119,7 +143,7 @@ function shape(p, shipRaw) {
   };
   const variants = (p.variants || []).filter(v => v.is_enabled).map(v => ({
     id: v.id, title: v.title, sku: v.sku || '', price: v.price, options: inOrder(v), available: v.is_available !== false,
-    ship: shippingFor(shipRaw, v.id),
+    ship: shippingFor(measured, v.id),
   }));
   const used = new Set(variants.flatMap(v => v.options));
   const options = (p.options || []).map(o => ({
@@ -183,7 +207,7 @@ async function pictures(prod) {
     throw new Error(r.error + (r.body ? `: ${r.body}` : ''));
   }
   const hide = new Set((shopCfg.hideProducts || []).map(String));
-  const products = r.products.filter(p => !hide.has(String(p.id))).map(p => shape(p, r.shipping[`${p.blueprint_id}-${p.print_provider_id}`]))
+  const products = r.products.filter(p => !hide.has(String(p.id))).map(p => shape(p, r.measured[p.id]))
     .filter(p => p.variants.length && p.images.length);
   for (const p of products) {
     const noShip = p.variants.filter(v => !v.ship);
