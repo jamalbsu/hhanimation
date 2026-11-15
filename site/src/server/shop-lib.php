@@ -64,9 +64,10 @@ function printify_api(string $method, string $path, ?array $body = null): array 
   ], $body === null ? null : json_encode($body));
 }
 
+// Checkout stays closed until the webhook secret is stored too: without it a paid order would never reach Printify.
 function shop_ready(): bool {
   $k = shop_keys();
-  return !empty($k['stripe_secret_key']) && !empty($k['stripe_publishable_key']);
+  return !empty($k['stripe_secret_key']) && !empty($k['stripe_publishable_key']) && !empty($k['stripe_webhook_secret']);
 }
 
 // Requests from other sites can't start checkouts here.

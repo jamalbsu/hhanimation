@@ -86,7 +86,7 @@ Printify prints and ships; Stripe takes the payment; the site sits in between.
 **What's logged.** `.hh-data/shop.log` on the server gets one line per event: session ids, Printify order ids, results and errors. It holds no names, emails or addresses; those live in Stripe and Printify.
 
 **Settings** (`shop` in `site.config.json`):
-- `public`: `false` keeps the shop unlisted, with no menu link, no home teaser, no sitemap entry and noindex. The pages still work at their addresses, for testing. Set it to `true` to launch; that also needs `contactEmail`.
+- `public`: `false` keeps the shop out of search, with no homepage section, no sitemap entry and noindex. The Shop link in the menu and footer shows whenever there are products. Set it to `true` to launch; that also needs `contactEmail`.
 - `contactEmail`: the address in the returns policy.
 - `printifyShopId`: needed only if the Printify account has several shops.
 - `countries`: where checkout ships (`["US"]`).

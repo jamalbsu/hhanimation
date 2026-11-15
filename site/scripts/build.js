@@ -143,7 +143,8 @@ const gv = crypto.createHash('sha1').update(gameJs).digest('hex').slice(0, 8);
 // ---- shop ---------------------------------------------------------------------------
 // Products come from Printify ("npm run shop-sync" writes data/shop.json and the pictures in src/shop/).
 // Payment is Stripe's embedded checkout; the PHP in src/server/ starts it and turns paid orders into Printify orders.
-// Until "shop.public" is true the shop pages exist but are unlisted: no menu link, not in the sitemap, noindex.
+// The menu links the shop whenever it has products. Until "shop.public" is true it stays out of search:
+// no homepage section, not in the sitemap, noindex.
 const SHOP = { countries: ['US'], deliveryDays: [5, 12], maxQty: 5, ...(cfg.shop || {}) };
 const shopFile = process.env.HH_SHOP_DATA || at('data/shop.json');   // the env variables are for trying the pages with sample data
 const shopImg = process.env.HH_SHOP_IMG || at('src/shop');
@@ -200,7 +201,7 @@ const header = current => `<header class="bar">
     <a class="wordmark" href="/" aria-label="${esc(cfg.brand)}, home">${esc(cfg.brand)}</a>
     <nav class="bar__nav" aria-label="Main">
       <a class="bar__link" href="/episodes/"${current === 'episodes' ? ' aria-current="page"' : ''}>Episodes</a>
-      <a class="bar__link" href="/games/"${current === 'games' ? ' aria-current="page"' : ''}>Games</a>${shopPublic ? `
+      <a class="bar__link" href="/games/"${current === 'games' ? ' aria-current="page"' : ''}>Games</a>${shopOn ? `
       <a class="bar__link" href="/shop/"${current === 'shop' ? ' aria-current="page"' : ''}>Shop</a>` : ''}
       <a class="bar__link" href="/#about">About</a>
       <a class="btn btn--pop btn--sm" href="${subscribeUrl}" target="_blank" rel="noopener">Subscribe</a>
@@ -211,7 +212,7 @@ const header = current => `<header class="bar">
 const footer = `<footer class="foot">
   <div class="wrap foot__in">
     <p><span class="wordmark wordmark--sm">${esc(cfg.brand)}</span> Original animated adventures, one short episode at a time.</p>
-    <p><a href="/episodes/">All episodes</a> · <a href="/games/">Games</a> · ${shopPublic ? '<a href="/shop/">Shop</a> · ' : ''}<a href="${channelUrl}" target="_blank" rel="noopener">YouTube: ${esc(cfg.channel.handle)}</a> · © ${year} ${esc(cfg.brand)}</p>
+    <p><a href="/episodes/">All episodes</a> · <a href="/games/">Games</a> · ${shopOn ? '<a href="/shop/">Shop</a> · ' : ''}<a href="${channelUrl}" target="_blank" rel="noopener">YouTube: ${esc(cfg.channel.handle)}</a> · © ${year} ${esc(cfg.brand)}</p>
   </div>
 </footer>`;
 
