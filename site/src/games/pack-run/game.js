@@ -155,6 +155,16 @@ const THREATS = {
 };
 // the roar blast: the leader roars a ball of sound straight down its lane. hp: roars it takes; pts: points for it
 const BLAST_V = 3600, BLAST_CD = 0.26, BLAST_RANGE = 4600;
+// diamonds: a rare pickup on the trail; each puts a different armor on the pack for a few seconds
+const ARMORS = {
+  bubble: { name: 'Bubble Armor', c: '#4fd2ff', c2: '#c8f4ff', dur: 10, hits: 3 },   // soaks up three bumps or shots
+  rock:   { name: 'Rock Armor', c: '#f09a3a', c2: '#ffd9a0', dur: 7 },              // the pack plows through anything in its way
+  triple: { name: 'Triple Roar', c: '#ff4fb8', c2: '#ffc4e8', dur: 8 },             // every roar goes down three lanes
+  mirror: { name: 'Mirror Armor', c: '#9be05a', c2: '#e6ffc8', dur: 9 },            // shots bounce back at whoever threw them
+};
+const ARMOR_KEYS = Object.keys(ARMORS);
+// the herds shoot back: elephants squirt water balls from their trunks, buffalo fling mud. A roar and a ball cancel out.
+const SPIT = { elephant: { kind: 'water', v: 1150, y: -210 }, buffalo: { kind: 'mud', v: 1300, y: -110 } };
 const TOUGH = { elephant: { hp: 3, pts: 50, word: 'SPOOKED!' }, buffalo: { hp: 1, pts: 20, word: 'SHOO!' }, boulder: { hp: 2, pts: 30, word: 'CRACK!' }, log: { hp: 1, pts: 10, word: 'SNAP!' } };
 // the pack: the leader up front, the second panther and the leopard on either side, the jaguar at the back
 const PACK = [
@@ -466,7 +476,8 @@ function drawSpark(d) {
   main.globalAlpha = 1;
 }
 function drawRing(d) {                     // the roar leaving the leader's mouth, and the shock of a hit: a ring that widens and fades
-  const k = kAt(d.f, d.y, d.z) * SC, p = S(d.f, d.y, d.z), u = d.age / d.life, r = (d.r0 + d.r1 * smooth(u)) * k;
+  if (d.age < 0) return;
+  const k = kAt(d.f, d.y, d.z) * SC, p = S(d.f, d.y, d.z), u = d.age / d.life, r = Math.max(0, d.r0 + d.r1 * smooth(u)) * k;
   main.globalAlpha = (1 - u) * 0.9; main.strokeStyle = d.c || '#fff4c2'; main.lineWidth = Math.max(1, (d.w || 7) * k * (1 - u * 0.7));
   main.beginPath(); main.ellipse(p[0], p[1], r, r * 0.8, 0, 0, TAU); main.stroke();
   main.globalAlpha = 1;
@@ -486,6 +497,65 @@ function drawBlast(b) {                    // a roar blast: a glowing ball of so
   main.strokeStyle = '#ff8a1e'; main.lineWidth = Math.max(1, 3.4 * k);          // sound waves inside the ball
   for (const q of [0.38, 0.68]) { main.beginPath(); main.arc(p[0], p[1], r * q, -0.9, 0.9); main.stroke(); main.beginPath(); main.arc(p[0], p[1], r * q, Math.PI - 0.9, Math.PI + 0.9); main.stroke(); }
   main.fillStyle = 'rgba(255,255,255,0.8)'; main.beginPath(); main.ellipse(p[0] - r * 0.35, p[1] - r * 0.4, r * 0.26, r * 0.16, -0.5, 0, TAU); main.fill();
+  main.globalAlpha = 1;
+}
+function gemPath(c, x, y, r, sx) {          // a cut diamond: a flat top, a crown and a pointed base
+  c.beginPath(); c.moveTo(x - r * 0.55 * sx, y - r * 0.62); c.lineTo(x + r * 0.55 * sx, y - r * 0.62); c.lineTo(x + r * sx, y - r * 0.15);
+  c.lineTo(x, y + r); c.lineTo(x - r * sx, y - r * 0.15); c.closePath();
+}
+function drawGem(o, al) {
+  const A = ARMORS[o.gem], bob = Math.sin(STL * 4 + o.seed) * 8, k = kAt(o.f, -o.hg, o.z) * SC, p = S(o.f, -o.hg - bob, o.z), r = 46 * k;
+  const sx = 0.3 + 0.7 * Math.abs(Math.cos(STL * 2.4 + o.seed));
+  main.globalAlpha = al;
+  const g = main.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 2.6); g.addColorStop(0, A.c2); g.addColorStop(0.35, A.c + 'aa'); g.addColorStop(1, A.c + '00');
+  main.fillStyle = g; main.fillRect(p[0] - r * 2.6, p[1] - r * 2.6, r * 5.2, r * 5.2);
+  gemPath(main, p[0], p[1], r, sx); main.fillStyle = A.c; main.fill();
+  main.fillStyle = A.c2; main.beginPath(); main.moveTo(p[0] - r * 0.55 * sx, p[1] - r * 0.62); main.lineTo(p[0] + r * 0.2 * sx, p[1] - r * 0.62); main.lineTo(p[0] - r * 0.1 * sx, p[1] + r * 0.4); main.lineTo(p[0] - r * sx, p[1] - r * 0.15); main.closePath(); main.fill();
+  main.strokeStyle = 'rgba(255,255,255,0.75)'; main.lineWidth = Math.max(1, 1.6 * k); main.beginPath(); main.moveTo(p[0] - r * sx, p[1] - r * 0.15); main.lineTo(p[0] + r * sx, p[1] - r * 0.15); main.stroke();
+  gemPath(main, p[0], p[1], r, sx); main.strokeStyle = '#0b0b0f'; main.lineWidth = Math.max(1, 3.2 * k); main.lineJoin = 'round'; main.stroke();
+  if (Math.sin(STL * 5 + o.seed) > 0.75) { main.fillStyle = '#fff'; starPath(main, p[0] + r * 0.4 * sx, p[1] - r * 0.6, r * 0.32, 1); main.fill(); }   // a glint
+  main.globalAlpha = 1;
+}
+function drawSpit(s) {                       // a water ball or a mud ball flying at the pack, with drops trailing behind
+  const k = kAt(s.f, s.y, s.z) * SC, p = S(s.f, s.y, s.z), r = 30 * k, water = s.kind === 'water';
+  const C = water ? ['#7fd0ff', '#2f86d6', '#e8f8ff'] : ['#a0703c', '#5e3c1a', '#d8b48a'];
+  for (let i = 1; i <= 3; i++) { const q = S(s.f + i * 70, s.y - 6 * i, s.z), rr = r * (0.5 - i * 0.1); main.fillStyle = C[1]; main.globalAlpha = 0.8 - i * 0.2; main.beginPath(); main.arc(q[0], q[1], rr, 0, TAU); main.fill(); }
+  main.globalAlpha = 1;
+  const g = main.createRadialGradient(p[0] - r * 0.3, p[1] - r * 0.3, r * 0.1, p[0], p[1], r);
+  g.addColorStop(0, C[0]); g.addColorStop(1, C[1]);
+  main.fillStyle = g; main.strokeStyle = '#0b0b0f'; main.lineWidth = Math.max(1, 3 * k);
+  const wob = 1 + 0.1 * Math.sin(STL * 30 + s.seed);
+  main.beginPath(); main.ellipse(p[0], p[1], r * wob, r / wob, 0, 0, TAU); main.fill(); main.stroke();
+  main.fillStyle = C[2]; main.beginPath(); main.ellipse(p[0] - r * 0.35, p[1] - r * 0.38, r * 0.25, r * 0.15, -0.5, 0, TAU); main.fill();
+}
+// The armor: a glowing shell around the whole pack, in the diamond's color. Each shell is painted once into a
+// picture of its own and only placed each frame: a big soft gradient redrawn 60 times a second costs more than the cats.
+const shells = {};
+function shellPic(kind) {
+  if (shells[kind]) return shells[kind];
+  const A = ARMORS[kind], w = 560, h = 400, rx = 250, ry = 170, [cv, c] = mk(w, h), x = w / 2, y = h / 2;
+  const g = c.createRadialGradient(x, y, ry * 0.5, x, y, rx);
+  g.addColorStop(0, A.c + '00'); g.addColorStop(0.8, A.c + '30'); g.addColorStop(1, A.c + '70');
+  c.fillStyle = g; c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, TAU); c.fill();
+  c.strokeStyle = A.c; c.lineWidth = 7; c.lineJoin = 'round';
+  if (kind === 'rock') c.setLineDash([24, 10]); else if (kind === 'mirror') c.setLineDash([42, 18]);
+  c.beginPath();
+  if (kind === 'triple') for (let i = 0; i <= 64; i++) { const t = i / 64 * TAU, q = 1 + 0.07 * Math.sin(t * 11); c.lineTo(x + Math.cos(t) * rx * q, y + Math.sin(t) * ry * q); }   // flames
+  else c.ellipse(x, y, rx, ry, 0, 0, TAU);
+  c.closePath(); c.stroke(); c.setLineDash([]);
+  c.strokeStyle = A.c2; c.lineWidth = 5; c.beginPath(); c.ellipse(x, y, rx * 0.9, ry * 0.88, 0, Math.PI * 1.1, Math.PI * 1.45); c.stroke();   // shine
+  return (shells[kind] = { cv, w, h, rx, ry });
+}
+function drawArmor() {
+  const a = run.armor, A = ARMORS[a.kind], left = a.until - STL, P = shellPic(a.kind);
+  const al = (left < 2 ? (Math.floor(STL * 8) % 2 ? 0.35 : 1) : 1) * clamp((STL - a.t0) / 0.25);
+  const c = S(-110, -150, packZ), k = kAt(-110, -150, packZ) * SC, sx = 330 * k / P.rx * (1 + 0.025 * Math.sin(STL * 9)), sy = 230 * k / P.ry;
+  main.globalAlpha = al;
+  main.save(); main.translate(c[0], c[1]);
+  if (a.kind === 'rock' || a.kind === 'mirror') main.rotate(Math.sin(STL * 3) * 0.04);     // a slow wobble instead of moving dashes
+  main.drawImage(P.cv, -P.w / 2 * sx, -P.h / 2 * sy, P.w * sx, P.h * sy);
+  main.restore();
+  if (a.kind === 'bubble') for (let i = 0; i < Math.min(a.hits, 3); i++) { main.fillStyle = A.c2; main.strokeStyle = '#0b0b0f'; main.lineWidth = Math.max(1, 2 * k); main.beginPath(); main.arc(c[0] + (i - (Math.min(a.hits, 3) - 1) / 2) * 26 * k, c[1] - 230 * k - 18 * k, 8 * k, 0, TAU); main.fill(); main.stroke(); }   // hits left
   main.globalAlpha = 1;
 }
 function drawComic() {
@@ -519,9 +589,9 @@ function render() {
   for (const o of obs) {
     const herd = o.kind === 'elephant' || o.kind === 'buffalo', al = clamp(1 - (o.f - 4300) / 900) * o.alpha;
     if (!inFront(o.f, o.z, -100) || al <= 0.01) continue;
-    const d = depthOf(o.f, o.z) + (o.kind === 'star' ? -1 : 0), bj = herd ? beastJob(o) : null;
+    const d = depthOf(o.f, o.z) + (pickup(o) ? -1 : 0), bj = herd ? beastJob(o) : null;
     if (bj) beasts.push(bj);
-    items.push({ d, draw: o.kind === 'boulder' ? () => drawBoulder(o, al) : o.kind === 'log' ? () => drawLog(o, al) : o.kind === 'star' ? () => drawStar(o, al) : crew.length ? () => drawPic(bj, al) : () => drawBeastHere(bj, al) });
+    items.push({ d, draw: o.kind === 'boulder' ? () => drawBoulder(o, al) : o.kind === 'log' ? () => drawLog(o, al) : o.kind === 'star' ? () => drawStar(o, al) : o.kind === 'gem' ? () => drawGem(o, al) : crew.length ? () => drawPic(bj, al) : () => drawBeastHere(bj, al) });
   }
   for (const p of puffs) if (inFront(p.f, p.z, p.y)) items.push({ d: depthOf(p.f, p.z) - 30, draw: () => (p.ring ? drawRing(p) : p.spark ? drawSpark(p) : drawPuff(p)) });
   for (const b of blasts) if (inFront(b.f, b.z, b.y)) items.push({ d: depthOf(b.f, b.z) - 40, draw: () => drawBlast(b) });
@@ -529,6 +599,8 @@ function render() {
   const cats = PACK.map((c, i) => catJob(c, i, box));
   paintAnimals(cats, beasts);
   PACK.forEach((c, i) => items.push({ d: depthOf(c.fx, c.z), draw: () => drawPic(cats[i], blink) }));
+  for (const s of spits) if (inFront(s.f, s.z, s.y)) items.push({ d: depthOf(s.f, s.z) - 40, draw: () => drawSpit(s) });
+  if (run.armor && state !== 'title') items.push({ d: Math.min(...PACK.map(c => depthOf(c.fx, c.z))) - 50, draw: drawArmor });   // over the pack
   items.sort((a, b) => b.d - a.d);
   for (const it of items) it.draw();
   drawComic();
@@ -538,8 +610,9 @@ function render() {
 // ---- the round --------------------------------------------------------------------------
 let state = 'title', stateT = 0, paused = false, packV = 0, packZ = 0;
 let threat = [params.get('threat'), store.get('packrun.threat')].find(t => THREATS[t]) || 'elephants';   // ?threat=buffalo picks one, for testing
-const obs = [], puffs = [], blasts = [];
-const run = { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9 };
+const obs = [], puffs = [], blasts = [], spits = [];
+const pickup = o => o.kind === 'star' || o.kind === 'gem';
+const run = { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 0, spitT: 0, cancels: 0, gems: 0 };
 const progress = () => clamp(run.t / ROUND);
 const airborne = () => { const J = (STL - run.jumpT) / JD; return J > 0.14 && J < 0.9; };
 const scoreNow = () => Math.floor(run.dist / 100) + run.stars * 25 + run.bonus + (run.won ? 200 : 0);
@@ -563,15 +636,17 @@ function tell(event, extra) {
 function startRound() {
   if (state === 'go' || state === 'run') return;
   sound.unlock();
-  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: MID, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9 });
+  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: MID, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 5 + Math.random() * 2, spitT: 6, cancels: 0, gems: 0, warned: false });
   for (const o of obs) dropPic('b' + o.id);
-  obs.length = 0; blasts.length = 0;
+  obs.length = 0; blasts.length = 0; spits.length = 0;
   setState('go');
   camGo(CAMS.run, REDUCE ? 0.5 : 1.5);
   show(null); hud(true); updateHud(true);
   stage.focus({ preventScroll: true });
   pop(THREATS[threat].pop, { big: true, hue: threat === 'boulders' ? 'zap' : 'hot' });
   sound.go(); sound.music(true);
+  const forced = params.get('armor');          // ?armor=bubble wears one armor all round, for testing
+  if (ARMORS[forced]) run.armor = { kind: forced, t0: STL, until: 1e9, hits: ARMORS[forced].hits || 0 };
   tell('start');
 }
 function finish(won) {
@@ -582,6 +657,8 @@ function finish(won) {
   won ? sound.win() : sound.lose();
   sound.music(false);
   for (const o of obs) o.leaving = true;
+  for (const sp of spits) sp.dead = true;
+  run.armor = null;
   const score = scoreNow(), key = 'packrun.best.' + threat, best = +(store.get(key) || 0), isBest = score > best;
   if (isBest) store.set(key, String(score));
   tell('finish', { score, won });
@@ -672,8 +749,14 @@ function roarHit(o, b) {
   puffs.push({ ring: true, f: o.f + lo, y, z: o.z, r0: 30, r1: 150, w: 9, c: '#ffe600', age: 0, life: 0.35 });
   puffs.push({ spark: true, f: o.f + lo, y, z: o.z, age: 0, life: 0.4, seed: o.seed + o.hp });
   if (o.hp > 0) { sound.thud(); return; }
+  clearIt(o);
+}
+// it gives up: an animal turns tail and runs off, a boulder or a log cracks apart (rammed: rock armor ran into it)
+function clearIt(o, rammed) {
   const tough = TOUGH[o.kind];
-  o.leaving = true; o.spooked = true; run.spooked++; run.bonus += tough.pts; bumpChip();
+  if (!tough) return;
+  if (rammed) { shake = REDUCE ? 0 : 0.5; puffs.push({ ring: true, f: o.f + extent(o)[0], y: -120, z: o.z, r0: 40, r1: 180, w: 10, c: ARMORS.rock.c, age: 0, life: 0.35 }); }
+  o.hp = 0; o.leaving = true; o.spooked = true; run.spooked++; run.bonus += tough.pts; bumpChip();
   if (o.kind === 'boulder' || o.kind === 'log') {               // it cracks apart into a cloud of dust and chips
     o.alpha = Math.min(o.alpha, 0.5);
     for (let i = 0; i < 9; i++) puffs.push({ f: o.f + (Math.random() - 0.5) * 120, y: -20 - Math.random() * 80, z: o.z + (Math.random() - 0.5) * 160, r: 40 + Math.random() * 50, a: 0.6, age: 0, life: 0.8 + Math.random() * 0.5, vy: -40 });
@@ -683,6 +766,68 @@ function roarHit(o, b) {
     sound.spook(o.kind);
   }
   if (STL - run.popT > 0.7) { run.popT = STL; pop(`${tough.word} +${tough.pts}`, { hue: o.kind === 'boulder' || o.kind === 'log' ? 'zap' : 'pop', small: true }); }
+}
+
+// ---- diamonds and armor --------------------------------------------------------------------
+function spawnGem() {
+  const r = run.rnd, kinds = ARMOR_KEYS.filter(k => !run.armor || k !== run.armor.kind);
+  const gem = kinds[Math.floor(r() * kinds.length)];
+  const l = THREATS[threat].kind === 'boulder' ? Math.floor(r() * LANES) : run.lastGap;        // in the open lane, where the pack can reach it
+  obs.push(mkObs('gem', l, 4900, { hg: 70 }));
+  obs[obs.length - 1].gem = gem;
+}
+function grabGem(o) {
+  o.hit = true; o.alpha = 0; run.gems++;
+  const A = ARMORS[o.gem];
+  run.armor = { kind: o.gem, t0: STL, until: STL + A.dur, hits: A.hits || 0 };
+  for (let i = 0; i < 3; i++) puffs.push({ ring: true, stay: true, f: -110, y: -150, z: packZ, r0: 60 + i * 40, r1: 260, w: 8, c: A.c, age: -i * 0.08, life: 0.5 });
+  pop(A.name.toUpperCase() + '!', { hue: 'zap', big: false });
+  sound.gem(); updateHud(true);
+}
+function armorHit() {                       // the bubble takes a hit; after its last one it pops
+  const a = run.armor;
+  puffs.push({ ring: true, stay: true, f: -110, y: -150, z: packZ, r0: 200, r1: 120, w: 10, c: ARMORS[a.kind].c2, age: 0, life: 0.3 });
+  sound.block();
+  if (a.kind === 'bubble' && --a.hits <= 0) { run.armor = null; pop('POP!', { hue: 'hot', small: true }); updateHud(true); }
+}
+function shielded(o) {                      // something runs into the pack: the bubble can take it instead of a paw
+  if (!run.armor || run.armor.kind !== 'bubble') return false;
+  o.hit = true; o.leaving = true; flash = 0.15;
+  armorHit();
+  return true;
+}
+// ---- the herds shoot back ----------------------------------------------------------------------
+function enemyFire(dt) {
+  if (run.t < run.spitT) return;
+  const pg = progress(), lead = PACK[0].fx;
+  // only animals charging down the pack's lane or one next to it, far enough off to give the player time
+  const can = obs.filter(o => SPIT[o.kind] && !o.leaving && !o.hit && Math.abs(o.lane - run.lane) <= 1 && o.f - lead > 1700 && o.f - lead < 4200);
+  if (!can.length || run.rnd() > dt * lerp(1.2, 2.6, pg)) return;
+  const o = can[Math.floor(run.rnd() * can.length)], sp = SPIT[o.kind], [lo] = extent(o);
+  spits.push({ kind: sp.kind, f: o.f + lo, fPrev: o.f + lo, y: sp.y, z: o.z, v: o.v + sp.v, seed: Math.random() * 9, dead: false });
+  run.spitT = run.t + lerp(1.1, 0.55, pg);
+  if (!run.warned) { run.warned = true; pop('INCOMING!', { hue: 'hot', small: true }); }
+  sound.spit(sp.kind, (o.lane - run.lane) / 2);
+}
+function cancel(b, s) {                     // a roar and a ball meet: both burst in a shower of sparks
+  b.dead = true; s.dead = true; run.cancels++; run.bonus += 5;
+  puffs.push({ ring: true, f: s.f, y: s.y, z: s.z, r0: 20, r1: 120, w: 8, c: s.kind === 'water' ? '#bfe9ff' : '#e0c090', age: 0, life: 0.3 });
+  puffs.push({ spark: true, f: s.f, y: s.y, z: s.z, age: 0, life: 0.4, seed: s.seed });
+  sound.cancel();
+}
+function spitHits(s) {                      // a ball reaches the pack
+  s.dead = true;
+  const a = run.armor;
+  if (a && a.kind === 'mirror') {           // and bounces straight back up the trail as a roar
+    const z = laneZ(clamp(Math.round(s.z / LANE + MID), 0, LANES - 1));
+    blasts.push({ f: s.f + 40, f0: s.f + 40, fPrev: s.f + 40, y: s.y, z: s.z, zT: z, age: 0, dead: false });
+    puffs.push({ ring: true, stay: true, f: s.f, y: s.y, z: s.z, r0: 20, r1: 110, w: 7, c: ARMORS.mirror.c, age: 0, life: 0.3 });
+    sound.block(); return;
+  }
+  if (a && a.kind === 'rock') { puffs.push({ spark: true, f: s.f, y: s.y, z: s.z, age: 0, life: 0.4, seed: s.seed }); sound.block(); return; }   // it just splats on the rock
+  if (a && a.kind === 'bubble') { armorHit(); return; }
+  if (STL < run.inv) return;
+  bump(s);
 }
 
 function update(dt) {
@@ -717,6 +862,16 @@ function update(dt) {
     if (run.t >= ROUND) finish(true);
     if (run.jumpBuf > STL - 0.16 && (STL - run.jumpT) / JD > 0.88) jump();
     if (run.fireBuf > STL - 0.16 && STL - run.fireT >= BLAST_CD) fire();
+    if (run.t < ROUND - 3 && run.t >= run.nextGem) { spawnGem(); run.nextGem = run.t + 7 + run.rnd() * 3; }
+    enemyFire(dt);
+    if (run.armor && STL > run.armor.until) { run.armor = null; updateHud(true); }
+  }
+  // enemy balls fly at the pack
+  const zA = PACK[0].fx - 60, zB = PACK[0].fx + 90;
+  for (const s of spits) {
+    s.fPrev = s.f; s.f -= (packV + s.v) * dt;
+    if (s.f < -900) { s.dead = true; continue; }
+    if (state === 'run' && !s.dead && s.f < zB && s.fPrev > zA - 40 && Math.abs(s.z - packZ) < 110 && !airborne()) spitHits(s);   // jumping clears them
   }
   // roar blasts fly down their lane, straight at whatever is coming
   for (const b of blasts) {
@@ -724,31 +879,39 @@ function update(dt) {
     if (b.f - b.f0 > BLAST_RANGE) { b.dead = true; continue; }
     let hit = null, best = 1e9;
     for (const o of obs) {
-      if (o.kind === 'star' || o.hit || o.leaving || !o.hp) continue;
+      if (pickup(o) || o.hit || o.leaving || !o.hp) continue;
       const [lo, hi, hw] = extent(o);
       if (Math.abs(o.z - b.z) > hw + 34) continue;
       if (b.f > o.f + lo && b.fPrev < o.f + hi + (packV + o.v) * dt && o.f + lo < best) { hit = o; best = o.f + lo; }   // the nearest thing it reaches
     }
-    if (hit) roarHit(hit, b);
+    let ball = null;
+    for (const s of spits) {                 // a ball coming the other way down the same lane: they cancel out
+      if (s.dead || Math.abs(s.z - b.z) > 80) continue;
+      if (b.f + 40 >= s.f && b.fPrev - 40 <= s.fPrev && s.f < best) { ball = s; best = s.f; }
+    }
+    if (ball) cancel(b, ball); else if (hit) roarHit(hit, b);
   }
   for (let i = blasts.length - 1; i >= 0; i--) if (blasts[i].dead) blasts.splice(i, 1);
+  for (let i = spits.length - 1; i >= 0; i--) if (spits[i].dead) spits.splice(i, 1);
   // threats move
   const air = airborne(), lead = PACK[0], zoneA = lead.fx - 60, zoneB = lead.fx + 90;
   for (const o of obs) {
     o.fPrev = o.f; o.f -= (packV + o.v) * dt; o.D += o.v * dt;
     if (o.kind === 'boulder') o.roll += (o.v + 0.2 * packV) * dt / Math.max(20, o.r);
-    if (o.leaving) { o.alpha -= dt * 2.2; if (o.kind !== 'star') o.z += Math.sign(o.z - packZ || 1) * 900 * dt; }
-    if (o.kind !== 'star' && o.kind !== 'log' && o.v > 0 && o.f < 5200 && o.alpha > 0.3) {          // dust thrown up behind the charge
+    if (o.leaving) { o.alpha -= dt * 2.2; if (!pickup(o)) o.z += Math.sign(o.z - packZ || 1) * 900 * dt; }
+    if (!pickup(o) && o.kind !== 'log' && o.v > 0 && o.f < 5200 && o.alpha > 0.3) {          // dust thrown up behind the charge
       o.dust += dt * (o.kind === 'boulder' ? 9 : o.kind === 'buffalo' ? 16 : 12);
       while (o.dust > 1) { o.dust--; const [, back, hw] = extent(o); puffs.push({ f: o.f + back * 0.7, y: -12 - Math.random() * 30, z: o.z + (Math.random() - 0.5) * hw * 2, r: 50 + Math.random() * 60, a: 0.45, age: 0, life: 1.1 + Math.random() * 0.6, vy: -20 }); }
     }
     if (state !== 'run' || o.hit || o.leaving) continue;
     const [lo, hi, hw] = extent(o), a = Math.min(o.f, o.fPrev) + lo, b = Math.max(o.f, o.fPrev) + hi;
     if (b < zoneA || a > zoneB) continue;
-    if (o.kind === 'star') { if (Math.abs(o.z - packZ) < hw && (o.hg < 100 || air)) collect(o); continue; }
+    if (pickup(o)) { if (Math.abs(o.z - packZ) < hw && (o.hg < 100 || air)) (o.kind === 'gem' ? grabGem : collect)(o); continue; }
     if (Math.abs(o.z - packZ) > hw + 62) continue;
     if ((o.kind === 'boulder' || o.kind === 'log') && air) continue;
+    if (run.armor && run.armor.kind === 'rock') { clearIt(o, true); continue; }      // rock armor: the pack plows straight through
     if (STL < run.inv) continue;
+    if (shielded(o)) continue;
     bump(o);
   }
   for (let i = obs.length - 1; i >= 0; i--) { const o = obs[i]; if (o.f < -CH_D * 0.9 || o.alpha <= 0) { obs.splice(i, 1); dropPic('b' + o.id); } }
@@ -783,7 +946,8 @@ function fire() {                          // the leader roars: a blast flies st
   if (STL - run.fireT < BLAST_CD) { run.fireBuf = STL; return; }
   run.fireT = STL; run.fireBuf = -9;
   const lead = PACK[0], y = airborne() ? -300 : -190;
-  blasts.push({ f: lead.fx + 130, f0: lead.fx + 130, fPrev: lead.fx + 130, y, z: lead.z, zT: laneZ(run.lane), age: 0, dead: false });
+  const lanes = run.armor && run.armor.kind === 'triple' ? [run.lane - 1, run.lane, run.lane + 1].filter(l => l >= 0 && l < LANES) : [run.lane];
+  for (const l of lanes) blasts.push({ f: lead.fx + 130, f0: lead.fx + 130, fPrev: lead.fx + 130, y, z: lead.z, zT: laneZ(l), age: 0, dead: false });
   puffs.push({ ring: true, stay: true, f: lead.fx + 110, y, z: lead.z, r0: 20, r1: 90, w: 6, age: 0, life: 0.3 });
   sound.roar();
 }
@@ -797,13 +961,16 @@ function jump() {
 }
 function bot() {                           // plays by itself with ?bot, for testing
   run.botT = run.botT || 0;
-  const lead = PACK[0].fx, ahead = obs.filter(o => !o.hit && o.f - lead > -80 && o.f - lead < 1500 && o.kind !== 'star');
+  const lead = PACK[0].fx, ahead = obs.filter(o => !o.hit && o.f - lead > -80 && o.f - lead < 1500 && !pickup(o));
   const blockedIn = l => ahead.some(o => o.lane === l && (o.kind === 'elephant' || o.kind === 'buffalo') && o.f - lead < 1300);
   if (STL > run.botT && blockedIn(run.lane)) {
     const best = [run.lane - 1, run.lane + 1].filter(l => l >= 0 && l < LANES && !blockedIn(l));
     if (best.length) { steer(best[0] - run.lane); run.botT = STL + 0.2; }
     else { const open = ALL_LANES.filter(l => !blockedIn(l)).sort((a, b) => Math.abs(a - run.lane) - Math.abs(b - run.lane)); if (open.length) { steer(Math.sign(open[0] - run.lane)); run.botT = STL + 0.16; } }
   }
+  const gem = obs.find(o => o.kind === 'gem' && !o.hit && o.f - lead > 300 && o.f - lead < 2600);
+  if (gem && STL > run.botT && gem.lane !== run.lane && !blockedIn(run.lane + Math.sign(gem.lane - run.lane))) { steer(Math.sign(gem.lane - run.lane)); run.botT = STL + 0.25; }
+  if (spits.some(sp => Math.abs(sp.z - packZ) < 120 && sp.f - lead < 2600)) fire();
   if (obs.some(o => o.hp > 0 && !o.hit && !o.leaving && o.lane === run.lane && o.f - lead > 0 && o.f - lead < 3200)) fire();   // and roars at whatever is in its lane
   for (const o of ahead) if ((o.kind === 'boulder' || o.kind === 'log') && o.lane === run.lane) { const tt = (o.f - lead) / (packV + o.v); if (tt > 0.12 && tt < 0.3) jump(); }
 }
@@ -842,13 +1009,19 @@ addEventListener('keydown', e => {
 // ---- screens, scores and pops (plain HTML over the canvas, in the site's own lettering) ----
 const screens = { start: $('[data-screen="start"]'), end: $('[data-screen="end"]'), pause: $('[data-screen="pause"]') };
 function show(name) { for (const k in screens) screens[k].hidden = k !== name; }
-const hudEl = $('.game__hud');
+const hudEl = $('.game__hud'), armorEl = $('[data-armor]');
 function hud(on) { hudEl.hidden = !on; $('[data-pause]').hidden = !on; }
 let shown = {};
 function updateHud(force) {
   const score = scoreNow(), left = Math.max(0, Math.ceil(ROUND - run.t));
   if (force || shown.score !== score) { $('[data-score]').textContent = score; shown.score = score; }
   if (force || shown.left !== left) { $('[data-time]').textContent = `0:${String(left).padStart(2, '0')}`; shown.left = left; $('.game__time').classList.toggle('is-low', left <= 5 && state === 'run'); }
+  const ak = run.armor ? run.armor.kind : '';
+  if (force || shown.armor !== ak) {
+    armorEl.hidden = !ak; shown.armor = ak;
+    if (ak) { armorEl.querySelector('[data-armor-name]').textContent = ARMORS[ak].name; armorEl.style.setProperty('--armor', ARMORS[ak].c); }
+  }
+  if (ak) armorEl.style.setProperty('--left', clamp((run.armor.until - STL) / ARMORS[ak].dur).toFixed(3));
   if (force || shown.paws !== run.paws) {
     $$('.game__paw').forEach((p, i) => p.classList.toggle('is-gone', i >= run.paws));
     $('.game__paws').setAttribute('aria-label', `${run.paws} ${run.paws === 1 ? 'paw' : 'paws'} left`); shown.paws = run.paws;
@@ -861,7 +1034,7 @@ function endScreen(score, best, isBest) {
   $('[data-end-word]').textContent = won ? 'Phew!' : 'So close!';
   $('[data-end-title]').textContent = won ? `You outran the ${T.name.toLowerCase()}!` : `The ${T.name.toLowerCase()} got you this time`;
   $('[data-end-score]').textContent = score;
-  $('[data-end-stats]').textContent = `${Math.floor(run.dist / 100)} m run · ${run.stars} ${run.stars === 1 ? 'star' : 'stars'} · ${run.spooked} roared away${won ? ' · +200 for making it' : ''} · best ${best}`;
+  $('[data-end-stats]').textContent = `${Math.floor(run.dist / 100)} m run · ${run.stars} ${run.stars === 1 ? 'star' : 'stars'} · ${run.spooked} roared away${run.gems ? ` · ${run.gems} ${run.gems === 1 ? 'diamond' : 'diamonds'}` : ''}${won ? ' · +200 for making it' : ''} · best ${best}`;
   $('[data-end-best]').hidden = !isBest;
   $$('[data-ep]').forEach(a => { a.hidden = a.dataset.ep !== threat; });
   hud(false); show('end');
@@ -998,6 +1171,14 @@ const sound = (() => {
       o.connect(f); f.connect(g); g.connect(sfx); o.start(t); lfo.start(t); o.stop(t + 0.35); lfo.stop(t + 0.35);
       hiss(0.22, 0.14, 'bandpass', 1500, 600, 1.2);
     },
+    gem() { if (!live()) return; const t = ac.currentTime; [76, 80, 83, 88, 92].forEach((m, i) => tone(mtof(m), mtof(m), 0.16, 'triangle', 0.14, t + i * 0.05)); hiss(0.4, 0.06, 'highpass', 8000, 6000, 0.7); },
+    block() { if (live()) { tone(900, 1300, 0.1, 'sine', 0.16); tone(1300, 700, 0.18, 'triangle', 0.1, ac.currentTime + 0.05); } },
+    cancel() { if (live()) { hiss(0.16, 0.22, 'bandpass', 2500, 900, 1.2); tone(700, 300, 0.12, 'square', 0.05); } },
+    spit(kind, p) {               // a trunk squirt, or a wet splat of mud flung up
+      if (!live()) return;
+      if (kind === 'water') { hiss(0.28, 0.16, 'bandpass', 900, 3200, 2, ac.currentTime, sfx, p); tone(500, 900, 0.15, 'sine', 0.06); }
+      else hiss(0.2, 0.2, 'lowpass', 1200, 300, 1, ac.currentTime, sfx, p);
+    },
     thud() { if (live()) { tone(180, 90, 0.12, 'sine', 0.3); hiss(0.08, 0.12, 'bandpass', 2400, 1200, 1.5); } },
     crack() { if (!live()) return; hiss(0.3, 0.32, 'highpass', 3000, 900, 0.8); tone(300, 80, 0.2, 'triangle', 0.25); },
     spook(kind) {                  // a startled squeak and a boing as it turns tail
@@ -1016,7 +1197,7 @@ const sound = (() => {
 let last = 0, raf = 0, visible = true, fpsT = 0, fpsN = 0, slowFor = 0, workSum = 0;
 // numbers for testing: frames per second, milliseconds of script per frame, cat pictures per second per cat
 const stats = window.__packRun = { fps: 0, work: 0, catFps: 0, quality: 0, painter: crew.length ? 'workers' : 'page' };
-Object.defineProperties(stats, { lane: { get: () => run.lane, enumerable: true }, blasts: { get: () => blasts.length, enumerable: true }, roarAgo: { get: () => +(STL - run.fireT).toFixed(2), enumerable: true }, spooked: { get: () => run.spooked, enumerable: true }, score: { get: scoreNow, enumerable: true }, paws: { get: () => run.paws, enumerable: true }, air: { get: airborne, enumerable: true }, state: { get: () => paused ? 'paused' : state, enumerable: true } });
+Object.defineProperties(stats, { lane: { get: () => run.lane, enumerable: true }, blasts: { get: () => blasts.length, enumerable: true }, roarAgo: { get: () => +(STL - run.fireT).toFixed(2), enumerable: true }, armor: { get: () => run.armor && run.armor.kind, enumerable: true }, gems: { get: () => run.gems, enumerable: true }, spits: { get: () => spits.length, enumerable: true }, cancels: { get: () => run.cancels, enumerable: true }, spooked: { get: () => run.spooked, enumerable: true }, score: { get: scoreNow, enumerable: true }, paws: { get: () => run.paws, enumerable: true }, air: { get: airborne, enumerable: true }, state: { get: () => paused ? 'paused' : state, enumerable: true } });
 function frame(ts) {
   raf = requestAnimationFrame(frame);
   const raw = (ts - last) / 1000, dt = clamp(raw, 0, 0.05); last = ts;

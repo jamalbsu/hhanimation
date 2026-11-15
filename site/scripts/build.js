@@ -396,7 +396,7 @@ const VIDEO_GAME_LD = {
         <span class="game-card__body">
           <span class="chips"><span class="chip chip--pop">Free</span><span class="chip chip--ink">Phone or computer</span></span>
           <h2 class="game-card__title">${GAME.name}</h2>
-          <span class="game-card__text">Elephants, buffalo or a rockslide, charging straight at the pack. Switch lanes, jump, roar them away and grab the stars for 45 seconds.</span>
+          <span class="game-card__text">Elephants, buffalo or a rockslide, charging straight at the pack. Switch lanes, roar them away, dodge what they throw back and grab diamonds for armor.</span>
           <span class="btn btn--pop">${ICON_PLAY}Play ${GAME.name}</span>
         </span>
       </a></li>

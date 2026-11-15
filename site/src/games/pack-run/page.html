@@ -8,6 +8,7 @@
         <p class="game__score"><span class="game__label">Score</span> <strong data-score>0</strong></p>
         <p class="game__time"><span class="game__label">Time</span> <strong data-time>0:45</strong></p>
         <p class="game__paws" role="img" aria-label="3 paws left">{{paws}}</p>
+        <p class="game__armor" data-armor hidden><span data-armor-name>Armor</span><span class="game__armor-bar" aria-hidden="true"><i></i></span></p>
       </div>
       <div class="game__corner">
         <button class="game__btn game__btn--sound" type="button" data-sound aria-pressed="false">{{iconSoundOff}}{{iconSoundOn}}<span class="visually-hidden" data-sound-label>Sound off</span></button>
@@ -63,15 +64,17 @@
           <li><span class="panel__n">1</span><p><strong>Switch lanes.</strong> The trail has five lanes. Swipe left or right on the game. On a keyboard, use the arrow keys or A and D.</p></li>
           <li><span class="panel__n">2</span><p><strong>Jump.</strong> Swipe up on the game. On a keyboard, press the up arrow or W. Jump over logs and boulders. Elephants and buffalo are too big to jump, so go around them, or roar them away.</p></li>
           <li><span class="panel__n">3</span><p><strong>Roar.</strong> Tap the game, or press Space or F, and the black panther in front roars a blast of sound down its lane. A buffalo runs off after one roar, an elephant after three. Boulders crack after two roars, logs after one. Each one you clear adds points: 20 for a buffalo, 50 for an elephant, 30 for a boulder, 10 for a log.</p></li>
-          <li><span class="panel__n">4</span><p><strong>Grab the stars.</strong> Every star is worth 25 points, on top of a point for every meter the pack runs.</p></li>
-          <li><span class="panel__n">5</span><p><strong>Last 45 seconds.</strong> Make it to the end for 200 bonus points. Three bumps and the round is over.</p></li>
+          <li><span class="panel__n">4</span><p><strong>Watch out, they shoot back.</strong> Elephants squirt water balls and buffalo fling mud. Roar at a ball to cancel it out (5 points), jump over it, or switch lanes. A ball that hits the pack costs a paw.</p></li>
+          <li><span class="panel__n">5</span><p><strong>Grab the diamonds.</strong> Now and then a diamond sparkles in an open lane. Each color puts armor on the pack for a few seconds: <strong>blue</strong> Bubble Armor takes three hits for you, <strong>orange</strong> Rock Armor plows straight through anything, <strong>pink</strong> Triple Roar sends every roar down three lanes, and <strong>green</strong> Mirror Armor bounces balls back at whoever threw them.</p></li>
+          <li><span class="panel__n">6</span><p><strong>Grab the stars.</strong> Every star is worth 25 points, on top of a point for every meter the pack runs.</p></li>
+          <li><span class="panel__n">7</span><p><strong>Last 45 seconds.</strong> Make it to the end for 200 bonus points. Three bumps and the round is over.</p></li>
         </ol>
       </div>
       <div class="game-info__text">
         <h2>Three threats, one pack</h2>
         <p>Every round follows the rule of the cartoon: one huge thing comes straight at the pack. Pick an <strong>elephant charge</strong>, a <strong>buffalo stampede</strong> or a <strong>rockslide</strong> of rolling boulders before you run. Each one comes from an episode you can watch: {{threatEpisodes}}.</p>
         <h2>About the game</h2>
-        <p><strong>Pack Run</strong> is a free online game starring the {{series}}: the black panther who leads the way, the second panther, the leopard and the jaguar. It runs in your browser on a phone, a tablet or a computer, with no download, no sign-up and no ads. The cats are drawn live by the same animation code as the cartoon, so they gallop and leap exactly like they do in the episodes. Nobody gets hurt: a roar only spooks the animals off the trail. Sound starts off; turn it on with the speaker button for the music and the elephants.</p>
+        <p><strong>Pack Run</strong> is a free online game starring the {{series}}: the black panther who leads the way, the second panther, the leopard and the jaguar. It runs in your browser on a phone, a tablet or a computer, with no download, no sign-up and no ads. The cats are drawn live by the same animation code as the cartoon, so they gallop and leap exactly like they do in the episodes. Nobody gets hurt: a roar only spooks the animals off the trail, and they only throw water and mud. Sound starts off; turn it on with the speaker button for the music and the elephants.</p>
         <p>To count how many people play, the game keeps a random number in your browser and sends it when a round starts and ends. It isn't linked to a name, an account or a cookie, and nothing else about you is collected.</p>
       </div>
     </div>
