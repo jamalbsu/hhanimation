@@ -111,13 +111,13 @@ function card(ep, { play = false, meta = false } = {}) {
 // (../panther/panther-rig.js, the same file every episode builder uses) and the elephants and buffalo of the
 // episode engine (the "hoofed animals" section of the trailer episode).
 const GAME = {
-  path: '/games/pack-run/', name: 'Pack Run', published: '2026-11-14', updated: '2026-11-14',   // bump "updated" when the game changes
+  path: '/games/pack-run/', name: 'Pack Run', published: '2026-11-14', updated: '2026-11-15',   // bump "updated" when the game changes
   shot: 'src/games/pack-run/shot.png', image: '/games/pack-run/share.jpg', card: '/games/pack-run/card.webp',
   // each threat, with the episode it comes from
   threats: [['elephants', 'Elephants', 'Head-On Elephant Herd'], ['buffalo', 'Buffalo', 'Buffalo Stampede'], ['boulders', 'Boulders', 'Rockslide']],
 };
-GAME.description = `${SERIES} game: play free online. Steer the pack past charging elephants, buffalo and boulders in a 45-second cartoon runner. No download.`;
-GAME.pitch = `An elephant herd is charging head-on. Swipe the pack out of the way, jump the logs and grab the stars. It runs right here in your browser, on a phone or a computer.`;
+GAME.description = `${SERIES} game: play free online. Dodge or roar away charging elephants, buffalo and boulders in a 45-second cartoon runner. No download.`;
+GAME.pitch = `An elephant herd is charging head-on. Swipe the pack out of the way, roar the herd off the trail, jump the logs and grab the stars. It runs right here in your browser, on a phone or a computer.`;
 const threatEps = GAME.threats.map(([key, label, title]) => {
   const ep = findEpisode(shown, title);
   if (!ep) throw new Error(`Pack Run links the "${label}" round to "${title}", which is not on the site`);
@@ -396,7 +396,7 @@ const VIDEO_GAME_LD = {
         <span class="game-card__body">
           <span class="chips"><span class="chip chip--pop">Free</span><span class="chip chip--ink">Phone or computer</span></span>
           <h2 class="game-card__title">${GAME.name}</h2>
-          <span class="game-card__text">Elephants, buffalo or a rockslide, charging straight at the pack. Switch lanes, jump and grab the stars for 45 seconds.</span>
+          <span class="game-card__text">Elephants, buffalo or a rockslide, charging straight at the pack. Switch lanes, jump, roar them away and grab the stars for 45 seconds.</span>
           <span class="btn btn--pop">${ICON_PLAY}Play ${GAME.name}</span>
         </span>
       </a></li>

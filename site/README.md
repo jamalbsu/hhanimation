@@ -49,9 +49,9 @@ To preview locally, use the `happyhillz-site` entry in `../.claude/launch.json` 
 
 ## The game: Pack Run
 
-The pack runs down a three-lane savanna trail while one huge threat charges straight at it, the rule of every episode. The player picks the threat: an elephant charge, a buffalo stampede or a rockslide. A round lasts 45 seconds.
+The pack runs down a five-lane savanna trail while one huge threat charges straight at it, the rule of every episode. The player picks the threat: an elephant charge, a buffalo stampede or a rockslide. A round lasts 45 seconds.
 
-**How to play.** Swipe left or right (arrow keys, or A and D) to switch lanes. Tap, swipe up, or press Space or the up arrow to jump. Logs and boulders can be jumped; elephants and buffalo can't, so go around them. Stars are 25 points each, plus a point per meter run, and finishing the round adds 200. Three bumps end the round early. P or Esc pauses, M turns the sound on or off. Sound starts off.
+**How to play.** Swipe left or right (arrow keys, or A and D) to switch lanes. Swipe up (up arrow or W) to jump. Tap (Space, F or J; hold to keep roaring) to roar: the lead panther fires a blast of sound down its lane. A roar never hurts anything. It spooks a buffalo off the trail with one hit and an elephant with three, and cracks a boulder with two (a big one takes three) or a log with one. Clearing them scores 20, 50, 30 and 10 points. Logs and boulders can also be jumped; elephants and buffalo can't. Stars are 25 points each, plus a point per meter run, and finishing the round adds 200. Three bumps end the round early. P or Esc pauses, M turns the sound on or off. Sound starts off.
 
 **How it's built.** `src/games/pack-run/game.js` is the whole game. The build puts two pieces of the show into it at its markers and writes `dist/games/pack-run/pack-run.js`:
 
@@ -66,7 +66,7 @@ The pack runs down a three-lane savanna trail while one huge threat charges stra
 
 **Admin page.** https://happyhillz.com/secret-crm-door/ shows players (all time, today, 7 and 30 days), rounds, wins, best score, the last 14 days and the split by threat. It's password protected: wrong passwords are limited to 5 per 15 minutes, and it is kept out of search engines. Set or change the password with `npm run admin-password`, run in a terminal on a computer with the site's SSH key. It sends the password to the server's PHP over SSH, and only a hash is stored, in `.hh-data/admin.json`. The password is never in git.
 
-**Test switches** (add to the address): `?bot` plays a round by itself; `?cats=page` turns the workers off; `?shot` draws the still used for the share image. `window.__packRun` shows the frame rate, how often each cat is repainted, and the game state.
+**Test switches** (add to the address): `?bot` plays a round by itself, dodging and roaring; `?threat=buffalo` (or `elephants`, `boulders`) picks the threat; `?cats=page` turns the workers off; `?shot` draws the still used for the share image. `window.__packRun` shows the frame rate, how often each cat is repainted, and the game state.
 
 ## Automatic deploys
 

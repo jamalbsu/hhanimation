@@ -1,7 +1,8 @@
 // =====================================================================================
 //  PACK RUN: a Panthers Pack game for happyhillz.com
-//  The pack runs down a three-lane savanna trail while one huge threat charges straight at it:
-//  elephants, a buffalo stampede or a rockslide. Switch lanes, jump, grab stars, last 45 seconds.
+//  The pack runs down a five-lane savanna trail while one huge threat charges straight at it:
+//  elephants, a buffalo stampede or a rockslide. Switch lanes, jump, roar the threat off the trail,
+//  grab stars, last 45 seconds. (A roar spooks an elephant or buffalo away and cracks a boulder: no one gets hurt.)
 //
 //  site/scripts/build.js turns this file into /games/pack-run/pack-run.js. It puts the original panther
 //  rig (panther/panther-rig.js) at the PANTHER_RIG marker and the hoofed animals of the episode engine
@@ -91,7 +92,7 @@ function paintCat(s, j) {
   CAMYAW = j.yaw; CAMTILT = j.tilt; CH_D = j.dist; STL = j.t;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, W, H);
-  COAT = COATS[j.coat]; MARKS = j.marks; DLAG = 0; TALKW = 0;
+  COAT = COATS[j.coat]; MARKS = j.marks; DLAG = 0; TALKW = j.talk || 0;
   drawPanther(j.t, j.ph);
 }
 // one elephant or buffalo, as the episode engine draws its herds (st: its stride, lift, head and trunk)
@@ -141,14 +142,20 @@ const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } } };
 
 const ROUND = 45;                 // seconds in a round
-const LANE = 270;                 // lane spacing (body units)
+const LANES = 5, MID = (LANES - 1) / 2;     // lanes 0 to 4; the pack starts in the middle one
+const LANE = 240;                 // lane spacing (body units)
+const laneZ = l => (l - MID) * LANE;
 const JD = 0.8;                   // jump length (s)
 const F_SPAWN = 5200;             // threats appear this far up the trail
+// block: how many lanes a wave can close, early and late in the round (one lane always stays open)
 const THREATS = {
-  elephants: { name: 'Elephant Charge', pop: 'ELEPHANTS!', hint: 'SWITCH LANES!', kind: 'elephant', v: 430, every: [2.3, 1.45], two: [0.3, 0.62], logs: 0.4 },
-  buffalo:   { name: 'Buffalo Stampede', pop: 'STAMPEDE!', hint: 'SWITCH LANES!', kind: 'buffalo', v: 640, every: [1.8, 1.12], two: [0.45, 0.7], logs: 0.3 },
-  boulders:  { name: 'Rockslide', pop: 'ROCKSLIDE!', hint: 'JUMP!', kind: 'boulder', v: 280, every: [1.55, 1.0], logs: 0 },
+  elephants: { name: 'Elephant Charge', pop: 'ELEPHANTS!', hint: 'SWITCH LANES!', kind: 'elephant', v: 430, every: [2.2, 1.35], block: [1.7, 3.6], logs: 0.45 },
+  buffalo:   { name: 'Buffalo Stampede', pop: 'STAMPEDE!', hint: 'SWITCH LANES!', kind: 'buffalo', v: 640, every: [1.7, 1.05], block: [1.9, 3.8], logs: 0.35 },
+  boulders:  { name: 'Rockslide', pop: 'ROCKSLIDE!', hint: 'JUMP!', kind: 'boulder', v: 280, every: [1.4, 0.9], logs: 0 },
 };
+// the roar blast: the leader roars a ball of sound straight down its lane. hp: roars it takes; pts: points for it
+const BLAST_V = 3600, BLAST_CD = 0.26, BLAST_RANGE = 4600;
+const TOUGH = { elephant: { hp: 3, pts: 50, word: 'SPOOKED!' }, buffalo: { hp: 1, pts: 20, word: 'SHOO!' }, boulder: { hp: 2, pts: 30, word: 'CRACK!' }, log: { hp: 1, pts: 10, word: 'SNAP!' } };
 // the pack: the leader up front, the second panther and the leopard on either side, the jaguar at the back
 const PACK = [
   { coat: 'panther', marks: null, size: 1.0, fx: 60, dz: 0, ph: 0, rate: 20 },
@@ -242,9 +249,10 @@ function catJob(c, i, box) {                // where the cat is on screen now, a
   const w = Math.ceil(bw * ps), h = Math.ceil(bh * ps), d = c.dim;
   if (!d.w || w > d.w || h > d.h || w < d.w * 0.72 || h < d.h * 0.72) { d.w = w; d.h = h; }   // keep the canvas size steady
   const seen = !(px + box.x1 * s < 0 || px + box.x0 * s > CW || py + box.y0 * s > CH || py + box.y1 * s < 0);
-  return { key: 'c' + i, i, px, py, seen, s, t: STL, ph: c.ph, yaw: cam.yaw + c.turn, tilt: cam.tilt, dist: cam.dist, sc: ps / k, k, ax: -box.x0 * ps, ay: -box.y0 * ps, w: d.w, h: d.h, coat: c.coat, marks: c.marks };
+  const talk = i === 0 ? clamp(1 - (STL - run.fireT) / 0.4) : 0;            // the leader's head jerks forward as it roars
+  return { key: 'c' + i, i, px, py, seen, s, t: STL, ph: c.ph, yaw: cam.yaw + c.turn, tilt: cam.tilt, dist: cam.dist, sc: ps / k, k, ax: -box.x0 * ps, ay: -box.y0 * ps, w: d.w, h: d.h, coat: c.coat, marks: c.marks, talk };
 }
-const due = j => { const p = pics.get(j.key); return j.seen && (redrawAll || !p || STL - p.pic.t > 1 / 32); };   // at most 30 poses a second
+const due = j => { const p = pics.get(j.key); return j.seen && (redrawAll || !p || STL - p.pic.t > 1 / 32 || (j.talk > 0.9 && !(p.pic.talk > 0.9))); };   // at most 30 poses a second
 const lastPainted = j => { const p = pics.get(j.key); return p ? p.pic.t : -1; };
 function paintAnimals(cats, beasts) {
   if (crew.length) {                       // whenever a worker is free: its cat (the older picture, if it has two) and its share of the herd
@@ -304,8 +312,8 @@ function drawBeastHere(j, alpha) {          // without workers the page draws th
 const SKY = ['#5d88c2', '#f2a765', '#fbe0b0'], GROUND = ['#ecc896', '#d6ad6a', '#bb8f4a', '#8c6830'];
 const TRAIL = ['rgba(222,192,142,0.55)', 'rgba(196,160,104,0.7)'];
 const SPAN_T = 7200, SPAN_D = 3600;
-const TREES = (() => { const r = rng(91), a = []; for (let i = 0; i < 58; i++) { const sd = i % 2 ? 1 : -1; a.push({ wf: r() * SPAN_T, z: sd * (600 + r() * 1900), ht: 380 + r() * 220, cr: 115 + r() * 70, tw: 18 + r() * 12, seed: 1 + Math.floor(r() * 1e6) }); } return a; })();
-const DECOR = (() => { const r = rng(77), a = []; for (let i = 0; i < 260; i++) { let z = (r() - 0.5) * 3800; if (Math.abs(z) < LANE * 1.55) z = Math.sign(z || 1) * (LANE * 1.55 + r() * 500); a.push({ wf: r() * SPAN_D, z, kind: r(), s: r(), c: r() }); } return a; })();
+const TREES = (() => { const r = rng(91), a = []; for (let i = 0; i < 58; i++) { const sd = i % 2 ? 1 : -1; a.push({ wf: r() * SPAN_T, z: sd * (LANE * (MID + 0.5) + 240 + r() * 1900), ht: 380 + r() * 220, cr: 115 + r() * 70, tw: 18 + r() * 12, seed: 1 + Math.floor(r() * 1e6) }); } return a; })();
+const DECOR = (() => { const r = rng(77), a = []; for (let i = 0; i < 260; i++) { let z = (r() - 0.5) * 4400; if (Math.abs(z) < LANE * (MID + 0.55)) z = Math.sign(z || 1) * (LANE * (MID + 0.55) + r() * 500); a.push({ wf: r() * SPAN_D, z, kind: r(), s: r(), c: r() }); } return a; })();
 const FAR = (() => { const r = rng(24), a = []; for (let i = 0; i < 26; i++) a.push({ u: i / 26 + (r() - 0.5) * 0.02, s: 0.45 + r() * 0.7, h: r() }); return a; })();
 const CLOUDS = [[0.08, 0.5, 0.06], [0.42, 0.72, 0.075], [0.7, 0.42, 0.05], [0.9, 0.64, 0.065]];
 const wrapF = (wf, span, back) => (((wf - SD) % span) + span) % span - back;
@@ -365,11 +373,13 @@ function quad(f0, f1, z0, z1, fill) {
   main.fillStyle = fill; main.beginPath(); main.moveTo(a[0], a[1]); main.lineTo(b[0], b[1]); main.lineTo(c[0], c[1]); main.lineTo(d[0], d[1]); main.closePath(); main.fill();
 }
 function drawTrail() {
-  band(-LANE * 1.62, LANE * 1.62, 'rgba(206,170,112,0.32)');
-  for (let l = -1; l <= 1; l++) { band(l * LANE - 112, l * LANE + 112, TRAIL[0]); band(l * LANE - 84, l * LANE + 84, TRAIL[1]); }
-  // tufts of grass between the lanes, rushing past: the speed you see
-  const step = 300, off = SD % step;
-  for (const zc of [-LANE * 0.5, LANE * 0.5, -LANE * 1.6, LANE * 1.6])
+  const edge = LANE * (MID + 0.62);
+  band(-edge, edge, 'rgba(206,170,112,0.32)');
+  for (let l = 0; l < LANES; l++) { const z = laneZ(l); band(z - 100, z + 100, TRAIL[0]); band(z - 76, z + 76, TRAIL[1]); }
+  // tufts of grass between the lanes and along the edges, rushing past: the speed you see
+  const step = 300, off = SD % step, tufts = [-edge, edge];
+  for (let l = 0; l < LANES - 1; l++) tufts.push(laneZ(l) + LANE / 2);
+  for (const zc of tufts)
     for (let f = -off - 600; f < 7200; f += step) quad(f, f + 120, zc - 12, zc + 12, 'rgba(120,128,52,0.55)');
 }
 function drawDecor() {
@@ -455,6 +465,29 @@ function drawSpark(d) {
   main.beginPath(); for (let i = 0; i < 6; i++) { const a = i * TAU / 6 + d.seed; main.moveTo(p[0] + Math.cos(a) * r * 0.45, p[1] + Math.sin(a) * r * 0.45); main.lineTo(p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r); } main.stroke();
   main.globalAlpha = 1;
 }
+function drawRing(d) {                     // the roar leaving the leader's mouth, and the shock of a hit: a ring that widens and fades
+  const k = kAt(d.f, d.y, d.z) * SC, p = S(d.f, d.y, d.z), u = d.age / d.life, r = (d.r0 + d.r1 * smooth(u)) * k;
+  main.globalAlpha = (1 - u) * 0.9; main.strokeStyle = d.c || '#fff4c2'; main.lineWidth = Math.max(1, (d.w || 7) * k * (1 - u * 0.7));
+  main.beginPath(); main.ellipse(p[0], p[1], r, r * 0.8, 0, 0, TAU); main.stroke();
+  main.globalAlpha = 1;
+}
+function drawBlast(b) {                    // a roar blast: a glowing ball of sound with a comet tail, in the cartoon's ink outline
+  const k = kAt(b.f, b.y, b.z) * SC, p = S(b.f, b.y, b.z), t = S(b.f - 320, b.y + 10, b.z), r = 40 * k * (1 + 0.12 * Math.sin(b.age * 40));
+  const fade = clamp((BLAST_RANGE - (b.f - b.f0)) / 600);
+  main.globalAlpha = fade;
+  const g = main.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 2.8);
+  g.addColorStop(0, 'rgba(255,240,150,0.85)'); g.addColorStop(1, 'rgba(255,170,40,0)');
+  main.fillStyle = g; main.fillRect(p[0] - r * 2.8, p[1] - r * 2.8, r * 5.6, r * 5.6);
+  main.lineCap = 'round';
+  main.strokeStyle = 'rgba(255,170,40,0.55)'; main.lineWidth = r * 1.4; main.beginPath(); main.moveTo(t[0], t[1]); main.lineTo(p[0], p[1]); main.stroke();
+  main.strokeStyle = 'rgba(255,246,200,0.9)'; main.lineWidth = r * 0.6; main.beginPath(); main.moveTo(lerp(t[0], p[0], 0.4), lerp(t[1], p[1], 0.4)); main.lineTo(p[0], p[1]); main.stroke();
+  main.fillStyle = '#ffe600'; main.strokeStyle = '#0b0b0f'; main.lineWidth = Math.max(1, 3 * k);
+  main.beginPath(); main.arc(p[0], p[1], r, 0, TAU); main.fill(); main.stroke();
+  main.strokeStyle = '#ff8a1e'; main.lineWidth = Math.max(1, 3.4 * k);          // sound waves inside the ball
+  for (const q of [0.38, 0.68]) { main.beginPath(); main.arc(p[0], p[1], r * q, -0.9, 0.9); main.stroke(); main.beginPath(); main.arc(p[0], p[1], r * q, Math.PI - 0.9, Math.PI + 0.9); main.stroke(); }
+  main.fillStyle = 'rgba(255,255,255,0.8)'; main.beginPath(); main.ellipse(p[0] - r * 0.35, p[1] - r * 0.4, r * 0.26, r * 0.16, -0.5, 0, TAU); main.fill();
+  main.globalAlpha = 1;
+}
 function drawComic() {
   const sp = clamp((packV - 700) / 600) * (state === 'run' ? 1 : 0.5) * (REDUCE ? 0.4 : 1);
   if (sp > 0.02 && cam.yaw > 60) {          // speed lines streaming out from where the trail meets the sky
@@ -490,7 +523,8 @@ function render() {
     if (bj) beasts.push(bj);
     items.push({ d, draw: o.kind === 'boulder' ? () => drawBoulder(o, al) : o.kind === 'log' ? () => drawLog(o, al) : o.kind === 'star' ? () => drawStar(o, al) : crew.length ? () => drawPic(bj, al) : () => drawBeastHere(bj, al) });
   }
-  for (const p of puffs) if (inFront(p.f, p.z, p.y)) items.push({ d: depthOf(p.f, p.z) - 30, draw: () => (p.spark ? drawSpark(p) : drawPuff(p)) });
+  for (const p of puffs) if (inFront(p.f, p.z, p.y)) items.push({ d: depthOf(p.f, p.z) - 30, draw: () => (p.ring ? drawRing(p) : p.spark ? drawSpark(p) : drawPuff(p)) });
+  for (const b of blasts) if (inFront(b.f, b.z, b.y)) items.push({ d: depthOf(b.f, b.z) - 40, draw: () => drawBlast(b) });
   const box = catBox(), blink = STL < run.inv && state === 'run' ? (Math.floor(STL * 12) % 2 ? 0.45 : 1) : 1;
   const cats = PACK.map((c, i) => catJob(c, i, box));
   paintAnimals(cats, beasts);
@@ -503,12 +537,12 @@ function render() {
 
 // ---- the round --------------------------------------------------------------------------
 let state = 'title', stateT = 0, paused = false, packV = 0, packZ = 0;
-let threat = THREATS[store.get('packrun.threat')] ? store.get('packrun.threat') : 'elephants';
-const obs = [], puffs = [];
-const run = { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: 1, jumpT: -9, jumpBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0 };
+let threat = [params.get('threat'), store.get('packrun.threat')].find(t => THREATS[t]) || 'elephants';   // ?threat=buffalo picks one, for testing
+const obs = [], puffs = [], blasts = [];
+const run = { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9 };
 const progress = () => clamp(run.t / ROUND);
 const airborne = () => { const J = (STL - run.jumpT) / JD; return J > 0.14 && J < 0.9; };
-const scoreNow = () => Math.floor(run.dist / 100) + run.stars * 25 + (run.won ? 200 : 0);
+const scoreNow = () => Math.floor(run.dist / 100) + run.stars * 25 + run.bonus + (run.won ? 200 : 0);
 
 function setState(s) { state = s; stateT = STL; root.dataset.state = s; }
 // Counting players: one anonymous random number kept in this browser, sent when a round starts and ends
@@ -529,9 +563,9 @@ function tell(event, extra) {
 function startRound() {
   if (state === 'go' || state === 'run') return;
   sound.unlock();
-  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: 1, jumpT: -9, jumpBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: 1, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0 });
+  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: MID, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9 });
   for (const o of obs) dropPic('b' + o.id);
-  obs.length = 0;
+  obs.length = 0; blasts.length = 0;
   setState('go');
   camGo(CAMS.run, REDUCE ? 0.5 : 1.5);
   show(null); hud(true); updateHud(true);
@@ -555,12 +589,15 @@ function finish(won) {
 }
 
 // threats come in waves; every wave leaves at least one lane open unless the whole pack can jump it
+const ALL_LANES = Array.from({ length: LANES }, (_, i) => i);
 function spawnWave() {
-  const T = THREATS[threat], r = run.rnd, pg = progress(), lanes = [0, 1, 2];
+  const T = THREATS[threat], r = run.rnd, pg = progress(), lanes = ALL_LANES;
   run.wave++;
   if (T.kind === 'boulder') {
     const row = run.t - run.lastRow > 3.2 && r() < lerp(0.18, 0.4, pg) && run.wave > 2;
-    const n = row ? 3 : r() < lerp(0.25, 0.55, pg) ? 2 : 1, pick = shuffle(lanes, r).slice(0, n), big = !row && r() < 0.25;
+    const near = shuffle(lanes.filter(l => Math.abs(l - run.lane) <= 1), r), rest = shuffle(lanes.filter(l => Math.abs(l - run.lane) > 1), r);
+    const n = row ? LANES : 1 + (r() < lerp(0.3, 0.6, pg) ? 1 : 0) + (r() < lerp(0.1, 0.45, pg) ? 1 : 0);
+    const pick = row ? lanes : (r() < 0.75 ? near.concat(rest) : rest.concat(near)).slice(0, n), big = !row && r() < 0.25;   // mostly at the pack
     if (row) run.lastRow = run.t;
     const v = T.v + r() * 80;
     for (const l of pick) obs.push(mkObs('boulder', l, F_SPAWN, { v, r: row ? 50 + r() * 6 : big ? 84 : 58 + r() * 10 }));
@@ -569,23 +606,29 @@ function spawnWave() {
     if (row && !run.hinted) hint('JUMP!');
     return;
   }
-  const two = r() < lerp(T.two[0], T.two[1], pg) && run.wave > 1, n = two ? 2 : 1;
-  const open = lanes.filter(l => l !== run.lastGap), gap = run.wave === 1 ? (run.lane + 1) % 3 : two ? (r() < 0.6 ? pickNear(run.lastGap ?? 1, r) : open[Math.floor(r() * open.length)]) : -1;
-  const blocked = two ? lanes.filter(l => l !== gap) : [run.wave === 1 ? run.lane : Math.floor(r() * 3)];
-  run.lastGap = two ? gap : lanes.find(l => !blocked.includes(l));
+  // the open lane drifts at most a lane or two from the last one, so it can always be reached
+  const first = run.wave === 1;
+  const gap = first ? (run.lane < MID ? run.lane + 1 : run.lane - 1) : r() < 0.6 ? pickNear(run.lastGap ?? MID, r) : clamp(run.lastGap + Math.round((r() - 0.5) * 4), 0, LANES - 1);
+  const n = first ? 1 : Math.min(LANES - 1, 1 + Math.floor(r() * lerp(T.block[0], T.block[1], pg)));
+  const others = shuffle(lanes.filter(l => l !== gap), r);
+  if (others.includes(run.lane) && r() < 0.7) others.unshift(...others.splice(others.indexOf(run.lane), 1));   // usually aimed at the pack
+  const blocked = first ? [run.lane] : others.slice(0, n);
+  run.lastGap = gap;
   for (const l of blocked) {
-    const herd = T.kind === 'buffalo' ? 2 + (r() < pg ? 1 : 0) : 1 + (r() < pg * 0.45 ? 1 : 0);
+    // a wide wave sends fewer animals down each lane, so the herd on screen stays about the same size
+    const herd = T.kind === 'buffalo' ? (n <= 2 ? 2 + (r() < pg ? 1 : 0) : 1 + (r() < 0.45 ? 1 : 0)) : 1 + (n <= 2 && r() < pg * 0.45 ? 1 : 0);
     for (let i = 0; i < herd; i++) obs.push(mkObs(T.kind, l, F_SPAWN + r() * 160 + i * (T.kind === 'buffalo' ? 210 + r() * 80 : 430), { v: T.v + r() * 60, size: T.kind === 'buffalo' ? 0.95 + r() * 0.15 : 0.96 + r() * 0.14, dz: (r() - 0.5) * (T.kind === 'buffalo' ? 70 : 30) }));
   }
   const free = lanes.filter(l => !blocked.includes(l));
   const sl = free[Math.floor(r() * free.length)];
   const vClose = packV + T.v, tArr = F_SPAWN / vClose;           // stars wait in an open lane for the moment the herd arrives
   for (let i = 0; i < 4; i++) obs.push(mkObs('star', sl, tArr * packV - 120 + i * 150, { hg: 60 }));
-  if (T.kind === 'elephant') sound.trumpet(blocked[0] - run.lane); else sound.snort();
+  if (T.kind === 'elephant') sound.trumpet((blocked[0] - run.lane) / 2); else sound.snort();
   if (run.wave === 1) hint(T.hint);
+  if (run.wave === 3) hint('TAP TO ROAR!', 'SPACE TO ROAR!');
 }
 function spawnLog() {
-  const r = run.rnd, l = Math.floor(r() * 3), f = 4800;
+  const r = run.rnd, l = Math.floor(r() * LANES), f = 4800;
   // keep logs clear of the moment a herd goes by
   const tLog = f / packV;
   for (const o of obs) if (o.kind === THREATS[threat].kind && Math.abs(o.f / (packV + o.v) - tLog) < 0.7) return;
@@ -593,10 +636,11 @@ function spawnLog() {
   for (let i = 0; i < 3; i++) obs.push(mkObs('star', l, f - 170 + i * 170, { hg: [60, 150, 60][i] }));
 }
 const shuffle = (a, r) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-const pickNear = (g, r) => clamp(g + (r() < 0.5 ? -1 : 1), 0, 2);
+const pickNear = (g, r) => clamp(g + (r() < 0.5 ? -1 : 1), 0, LANES - 1);
 let SEEDN = 0;
 function mkObs(kind, lane, f, o) {
-  return { id: SEEDN, dim: { w: 0, h: 0 }, kind, lane, f, fPrev: f, z: (lane - 1) * LANE + (o.dz || 0), v: o.v || 0, size: o.size || 1, r: o.r || 0, hg: o.hg || 0, D: 0, ph: (SEEDN * 0.37) % 1, seed: (SEEDN++ * 2.3) % 7, roll: 0, alpha: 1, hit: false, leaving: false, dust: 0 };
+  const tough = TOUGH[kind], hp = tough ? tough.hp + (kind === 'boulder' && o.r > 80 ? 1 : 0) : 0;   // a big boulder takes one roar more
+  return { hp, id: SEEDN, dim: { w: 0, h: 0 }, kind, lane, f, fPrev: f, z: laneZ(lane) + (o.dz || 0), v: o.v || 0, size: o.size || 1, r: o.r || 0, hg: o.hg || 0, D: 0, ph: (SEEDN * 0.37) % 1, seed: (SEEDN++ * 2.3) % 7, roll: 0, alpha: 1, hit: false, leaving: false, dust: 0 };
 }
 function extent(o) {                       // [front, back] along the trail and half the width, for bumping into it
   if (o.kind === 'elephant') return [-(BEASTS.elephant.L + 110) * o.size, BEASTS.elephant.L * o.size, 92 * o.size];
@@ -620,6 +664,26 @@ function collect(o) {
   if (run.combo % 8 === 0) pop('STAR STREAK!', { hue: 'zap' });
   bumpChip();
 }
+// a roar blast reaches something on the trail: it is knocked back a little, and after enough roars it gives up
+function roarHit(o, b) {
+  const [lo] = extent(o), y = o.kind === 'log' ? -40 : o.kind === 'boulder' ? -o.r : -150;
+  b.dead = true; o.hp--;
+  o.f += o.kind === 'elephant' ? 70 : 110; o.v *= 0.8;                       // the roar pushes it back up the trail
+  puffs.push({ ring: true, f: o.f + lo, y, z: o.z, r0: 30, r1: 150, w: 9, c: '#ffe600', age: 0, life: 0.35 });
+  puffs.push({ spark: true, f: o.f + lo, y, z: o.z, age: 0, life: 0.4, seed: o.seed + o.hp });
+  if (o.hp > 0) { sound.thud(); return; }
+  const tough = TOUGH[o.kind];
+  o.leaving = true; o.spooked = true; run.spooked++; run.bonus += tough.pts; bumpChip();
+  if (o.kind === 'boulder' || o.kind === 'log') {               // it cracks apart into a cloud of dust and chips
+    o.alpha = Math.min(o.alpha, 0.5);
+    for (let i = 0; i < 9; i++) puffs.push({ f: o.f + (Math.random() - 0.5) * 120, y: -20 - Math.random() * 80, z: o.z + (Math.random() - 0.5) * 160, r: 40 + Math.random() * 50, a: 0.6, age: 0, life: 0.8 + Math.random() * 0.5, vy: -40 });
+    sound.crack();
+  } else {                                                      // it turns tail and runs off the trail
+    o.v = Math.min(o.v, 120);
+    sound.spook(o.kind);
+  }
+  if (STL - run.popT > 0.7) { run.popT = STL; pop(`${tough.word} +${tough.pts}`, { hue: o.kind === 'boulder' || o.kind === 'log' ? 'zap' : 'pop', small: true }); }
+}
 
 function update(dt) {
   STL += dt;
@@ -633,7 +697,7 @@ function update(dt) {
   growTab(STL, packV);
   SD += packV * dt;
   // lanes: the pack slides over; the others follow the leader a beat later
-  const zT = (run.lane - 1) * LANE;
+  const zT = laneZ(run.lane);
   packZ = lerp(packZ, zT, 1 - Math.exp(-15 * dt));
   for (const c of PACK) {
     const z0 = c.z; c.z = lerp(c.z, packZ + c.dz, 1 - Math.exp(-c.rate * dt));
@@ -652,7 +716,22 @@ function update(dt) {
     }
     if (run.t >= ROUND) finish(true);
     if (run.jumpBuf > STL - 0.16 && (STL - run.jumpT) / JD > 0.88) jump();
+    if (run.fireBuf > STL - 0.16 && STL - run.fireT >= BLAST_CD) fire();
   }
+  // roar blasts fly down their lane, straight at whatever is coming
+  for (const b of blasts) {
+    b.fPrev = b.f; b.f += BLAST_V * dt; b.age += dt; b.z = lerp(b.z, b.zT, 1 - Math.exp(-16 * dt)); b.y = lerp(b.y, -120, 1 - Math.exp(-5 * dt));
+    if (b.f - b.f0 > BLAST_RANGE) { b.dead = true; continue; }
+    let hit = null, best = 1e9;
+    for (const o of obs) {
+      if (o.kind === 'star' || o.hit || o.leaving || !o.hp) continue;
+      const [lo, hi, hw] = extent(o);
+      if (Math.abs(o.z - b.z) > hw + 34) continue;
+      if (b.f > o.f + lo && b.fPrev < o.f + hi + (packV + o.v) * dt && o.f + lo < best) { hit = o; best = o.f + lo; }   // the nearest thing it reaches
+    }
+    if (hit) roarHit(hit, b);
+  }
+  for (let i = blasts.length - 1; i >= 0; i--) if (blasts[i].dead) blasts.splice(i, 1);
   // threats move
   const air = airborne(), lead = PACK[0], zoneA = lead.fx - 60, zoneB = lead.fx + 90;
   for (const o of obs) {
@@ -676,7 +755,7 @@ function update(dt) {
   // dust kicked back by the cats
   if (packV > 300) for (const c of PACK) if (Math.random() < dt * 7) puffs.push({ f: c.fx - 120, y: -8, z: c.z + (Math.random() - 0.5) * 60, r: 26 + Math.random() * 26, a: 0.35, age: 0, life: 0.7, vy: -10 });
   for (let i = puffs.length - 1; i >= 0; i--) {
-    const p = puffs[i]; p.age += dt; p.f -= packV * dt; if (!p.spark) { p.r += 40 * dt; p.y += (p.vy || 0) * dt; }
+    const p = puffs[i]; p.age += dt; if (!p.stay) p.f -= packV * dt; if (!p.spark && !p.ring) { p.r += 40 * dt; p.y += (p.vy || 0) * dt; }
     if (p.age > p.life) puffs.splice(i, 1);
   }
   if (puffs.length > 160) puffs.splice(0, puffs.length - 160);
@@ -696,8 +775,17 @@ function update(dt) {
 const canMove = () => (state === 'run' || state === 'go') && !paused;
 function steer(d) {
   if (!canMove()) return;
-  const l = clamp(run.lane + d, 0, 2);
-  if (l !== run.lane) { run.lane = l; sound.swish(d); }
+  const l = clamp(run.lane + d, 0, LANES - 1);
+  if (l !== run.lane) { run.lane = l; sound.swish(d * 0.6 + (l - MID) * 0.15); }
+}
+function fire() {                          // the leader roars: a blast flies straight down the lane the pack is heading into
+  if (!canMove() || state !== 'run') return;
+  if (STL - run.fireT < BLAST_CD) { run.fireBuf = STL; return; }
+  run.fireT = STL; run.fireBuf = -9;
+  const lead = PACK[0], y = airborne() ? -300 : -190;
+  blasts.push({ f: lead.fx + 130, f0: lead.fx + 130, fPrev: lead.fx + 130, y, z: lead.z, zT: laneZ(run.lane), age: 0, dead: false });
+  puffs.push({ ring: true, stay: true, f: lead.fx + 110, y, z: lead.z, r0: 20, r1: 90, w: 6, age: 0, life: 0.3 });
+  sound.roar();
 }
 function jump() {
   if (!canMove()) return;
@@ -712,10 +800,11 @@ function bot() {                           // plays by itself with ?bot, for tes
   const lead = PACK[0].fx, ahead = obs.filter(o => !o.hit && o.f - lead > -80 && o.f - lead < 1500 && o.kind !== 'star');
   const blockedIn = l => ahead.some(o => o.lane === l && (o.kind === 'elephant' || o.kind === 'buffalo') && o.f - lead < 1300);
   if (STL > run.botT && blockedIn(run.lane)) {
-    const best = [run.lane - 1, run.lane + 1].filter(l => l >= 0 && l <= 2 && !blockedIn(l));
+    const best = [run.lane - 1, run.lane + 1].filter(l => l >= 0 && l < LANES && !blockedIn(l));
     if (best.length) { steer(best[0] - run.lane); run.botT = STL + 0.2; }
-    else if (!blockedIn(1)) { steer(1 - run.lane); run.botT = STL + 0.2; }
+    else { const open = ALL_LANES.filter(l => !blockedIn(l)).sort((a, b) => Math.abs(a - run.lane) - Math.abs(b - run.lane)); if (open.length) { steer(Math.sign(open[0] - run.lane)); run.botT = STL + 0.16; } }
   }
+  if (obs.some(o => o.hp > 0 && !o.hit && !o.leaving && o.lane === run.lane && o.f - lead > 0 && o.f - lead < 3200)) fire();   // and roars at whatever is in its lane
   for (const o of ahead) if ((o.kind === 'boulder' || o.kind === 'log') && o.lane === run.lane) { const tt = (o.f - lead) / (packV + o.v); if (tt > 0.12 && tt < 0.3) jump(); }
 }
 
@@ -735,15 +824,16 @@ stage.addEventListener('pointermove', e => {
 const lift = e => {
   if (!touch || e.pointerId !== touch.id) return;
   const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
-  if (!touch.used && e.type === 'pointerup' && Math.hypot(dx, dy) < 22 && performance.now() - touch.t < 450) jump();
+  if (!touch.used && e.type === 'pointerup' && Math.hypot(dx, dy) < 22 && performance.now() - touch.t < 450) fire();   // a tap roars
   touch = null;
 };
 stage.addEventListener('pointerup', lift); stage.addEventListener('pointercancel', lift);
-const KEYS = { ArrowLeft: () => steer(-1), KeyA: () => steer(-1), ArrowRight: () => steer(1), KeyD: () => steer(1), ArrowUp: jump, KeyW: jump, Space: jump };
+const KEYS = { ArrowLeft: () => steer(-1), KeyA: () => steer(-1), ArrowRight: () => steer(1), KeyD: () => steer(1), ArrowUp: jump, KeyW: jump, Space: fire, KeyF: fire, KeyJ: fire };
+const HOLD = new Set(['ArrowLeft', 'ArrowRight', 'Space', 'KeyF', 'KeyJ']);      // keys that repeat while held (a held roar key keeps roaring)
 addEventListener('keydown', e => {
   if (e.altKey || e.ctrlKey || e.metaKey || !visible) return;
   if (e.target.closest && e.target.closest('input, textarea, select') && !e.target.closest('#pack-run')) return;
-  if (canMove() && KEYS[e.code]) { e.preventDefault(); if (!e.repeat || e.code.startsWith('Arrow')) KEYS[e.code](); return; }
+  if (canMove() && KEYS[e.code]) { e.preventDefault(); if (!e.repeat || HOLD.has(e.code)) KEYS[e.code](); return; }
   if ((e.code === 'KeyP' || e.code === 'Escape') && (state === 'run' || state === 'go')) { e.preventDefault(); setPaused(!paused); return; }
   if (e.code === 'KeyM') { sound.toggle(); return; }
   if ((e.code === 'Enter' || e.code === 'Space') && paused) { e.preventDefault(); setPaused(false); }
@@ -771,7 +861,7 @@ function endScreen(score, best, isBest) {
   $('[data-end-word]').textContent = won ? 'Phew!' : 'So close!';
   $('[data-end-title]').textContent = won ? `You outran the ${T.name.toLowerCase()}!` : `The ${T.name.toLowerCase()} got you this time`;
   $('[data-end-score]').textContent = score;
-  $('[data-end-stats]').textContent = `${Math.floor(run.dist / 100)} m run · ${run.stars} ${run.stars === 1 ? 'star' : 'stars'}${won ? ' · +200 for making it' : ''} · best ${best}`;
+  $('[data-end-stats]').textContent = `${Math.floor(run.dist / 100)} m run · ${run.stars} ${run.stars === 1 ? 'star' : 'stars'} · ${run.spooked} roared away${won ? ' · +200 for making it' : ''} · best ${best}`;
   $('[data-end-best]').hidden = !isBest;
   $$('[data-ep]').forEach(a => { a.hidden = a.dataset.ep !== threat; });
   hud(false); show('end');
@@ -784,7 +874,7 @@ function setPaused(p) {
   paused = p; show(p ? 'pause' : null); sound.pause(p);
   if (!p) { last = performance.now(); stage.focus({ preventScroll: true }); }
 }
-function hint(text) { run.hinted = true; setTimeout(() => state === 'run' && pop(text, { hue: 'zap', small: true }), 900); }
+function hint(text, keysText) { run.hinted = true; const t = keysText && !coarse ? keysText : text; setTimeout(() => state === 'run' && pop(t, { hue: 'zap', small: true }), 900); }
 function lcg(seed) { let s = seed >>> 0; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
 function burstSvg(seed, spikes = 13) {           // the same uneven starburst the site's pages use
   const r = lcg(seed), w = 240, h = 150, pts = [];
@@ -899,6 +989,22 @@ const sound = (() => {
       o.connect(f); f.connect(g); pan(g, p * 0.5).connect(sfx); o.start(t); lfo.start(t); o.stop(t + 0.95); lfo.stop(t + 0.95);
     },
     snort() { if (live()) { hiss(0.3, 0.28, 'lowpass', 700, 160, 1); hiss(0.2, 0.2, 'lowpass', 600, 180, 1, ac.currentTime + 0.32); } },
+    roar() {                       // a short cartoon roar: a growl that drops, over a breathy burst
+      if (!live()) return;
+      const t = ac.currentTime, o = ac.createOscillator(), lfo = ac.createOscillator(), lg = ac.createGain(), f = ac.createBiquadFilter(), g = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(210, t); o.frequency.exponentialRampToValueAtTime(95, t + 0.28);
+      lfo.frequency.value = 34; lg.gain.value = 22; lfo.connect(lg); lg.connect(o.frequency);
+      f.type = 'lowpass'; f.frequency.setValueAtTime(1800, t); f.frequency.exponentialRampToValueAtTime(500, t + 0.3); env(g, t, 0.01, 0.2, 0.28);
+      o.connect(f); f.connect(g); g.connect(sfx); o.start(t); lfo.start(t); o.stop(t + 0.35); lfo.stop(t + 0.35);
+      hiss(0.22, 0.14, 'bandpass', 1500, 600, 1.2);
+    },
+    thud() { if (live()) { tone(180, 90, 0.12, 'sine', 0.3); hiss(0.08, 0.12, 'bandpass', 2400, 1200, 1.5); } },
+    crack() { if (!live()) return; hiss(0.3, 0.32, 'highpass', 3000, 900, 0.8); tone(300, 80, 0.2, 'triangle', 0.25); },
+    spook(kind) {                  // a startled squeak and a boing as it turns tail
+      if (!live()) return;
+      const t = ac.currentTime, hi = kind === 'buffalo' ? 0.8 : 1;
+      tone(400 * hi, 900 * hi, 0.16, 'triangle', 0.16, t); tone(900 * hi, 500 * hi, 0.2, 'triangle', 0.12, t + 0.12);
+    },
     win() { if (!live()) return; const t = ac.currentTime; [72, 76, 79, 84].forEach((m, i) => tone(mtof(m), mtof(m), i === 3 ? 0.5 : 0.16, 'triangle', 0.22, t + i * 0.12)); },
     lose() { if (!live()) return; const t = ac.currentTime; [67, 64, 60].forEach((m, i) => tone(mtof(m), mtof(m - 0.6), i === 2 ? 0.6 : 0.22, 'triangle', 0.2, t + i * 0.24)); },
   };
@@ -910,7 +1016,7 @@ const sound = (() => {
 let last = 0, raf = 0, visible = true, fpsT = 0, fpsN = 0, slowFor = 0, workSum = 0;
 // numbers for testing: frames per second, milliseconds of script per frame, cat pictures per second per cat
 const stats = window.__packRun = { fps: 0, work: 0, catFps: 0, quality: 0, painter: crew.length ? 'workers' : 'page' };
-Object.defineProperties(stats, { lane: { get: () => run.lane, enumerable: true }, air: { get: airborne, enumerable: true }, state: { get: () => paused ? 'paused' : state, enumerable: true } });
+Object.defineProperties(stats, { lane: { get: () => run.lane, enumerable: true }, blasts: { get: () => blasts.length, enumerable: true }, roarAgo: { get: () => +(STL - run.fireT).toFixed(2), enumerable: true }, spooked: { get: () => run.spooked, enumerable: true }, score: { get: scoreNow, enumerable: true }, paws: { get: () => run.paws, enumerable: true }, air: { get: airborne, enumerable: true }, state: { get: () => paused ? 'paused' : state, enumerable: true } });
 function frame(ts) {
   raf = requestAnimationFrame(frame);
   const raw = (ts - last) / 1000, dt = clamp(raw, 0, 0.05); last = ts;
@@ -945,10 +1051,11 @@ if (SHOT) {                                // a still for the share image: the h
   threat = 'elephants'; startRound(); show(null); hud(false);
   for (let i = 0; i < 60 * 2.4; i++) update(1 / 60);
   run.next = run.nextLog = 1e9; obs.length = 0;
-  obs.push(mkObs('elephant', 0, 2350, { v: 430, size: 1.08 }), mkObs('elephant', 2, 2150, { v: 430, size: 1.02, dz: 20 }),
-    mkObs('elephant', 1, 4700, { v: 430 }), mkObs('elephant', 0, 5000, { v: 430, size: 0.96 }), mkObs('log', 2, 3900, {}));
-  for (let i = 0; i < 5; i++) obs.push(mkObs('star', 1, 1150 + i * 165, { hg: 60 }));
+  obs.push(mkObs('elephant', 1, 2350, { v: 430, size: 1.08 }), mkObs('elephant', 3, 2150, { v: 430, size: 1.02, dz: 20 }),
+    mkObs('elephant', 2, 4700, { v: 430 }), mkObs('elephant', 1, 5000, { v: 430, size: 0.96 }), mkObs('log', 3, 3900, {}), mkObs('elephant', 4, 3300, { v: 430, size: 0.98 }));
+  for (let i = 0; i < 5; i++) obs.push(mkObs('star', 2, 1150 + i * 165, { hg: 60 }));
   for (let i = 0; i < 60 * 0.6; i++) update(1 / 60);
+  fire(); for (let i = 0; i < 9; i++) update(1 / 60);         // a roar blast on its way up the trail
   const title = document.createElement('div');
   title.className = 'game__shot-title';
   title.innerHTML = '<p class="chips"><span class="chip chip--ink">Panthers Pack</span><span class="chip chip--pop">Free game</span></p><p class="lockup game__logo"><span class="lockup__a">Pack</span> <span class="lockup__b">Run</span></p>';
