@@ -915,7 +915,7 @@ function animeFeatures(P, F, al, plane) {
   }
 }
 // how much the side-view face shows: it hands over to the front/top view quickly, so the near eye is never seen twice
-const faceSide = vis => smooth(clamp((vis * 1.6 - 0.3) / 0.28));
+const faceSide = vis => smooth(clamp((vis * 1.6 - 0.45) / 0.2));
 function faceTone() {                       // light coats get pink noses and dark whisker dots, dark coats the reverse
   const light = !!COAT.muzzle;
   return { light, nose: COAT.nose || (light ? '#c98a84' : '#2a1d22'), lip: light ? 'rgba(40,22,18,0.8)' : 'rgba(6,4,6,0.85)',
@@ -924,7 +924,8 @@ function faceTone() {                       // light coats get pink noses and da
 }
 function drawFace(P, vis) {
   const H = P.head, F = faceTone(), al = faceSide(vis); if (al <= 0) return;
-  const plane = lz => { ctx.setTransform(1, 0, 0, 1, 0, 0); setBodyTransform(ctx); ctx.transform(...headAffine(H, lz)); };
+  const flank = RC < 0 ? -1 : 1;                // the side face goes on the flank that faces the camera, so it is never seen through the head from the far side
+  const plane = lz => { ctx.setTransform(1, 0, 0, 1, 0, 0); setBodyTransform(ctx); ctx.transform(...headAffine(H, lz * flank)); };
   ctx.save(); ctx.globalAlpha = al; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   // inner ear, with tufts of fur
   plane(16);
@@ -1017,12 +1018,19 @@ function drawFace(P, vis) {
 const rotN = (H, x, y) => { const a = H.a - 7 * DEG, ca = Math.cos(a), sa = Math.sin(a); return [x * ca - y * sa, x * sa + y * ca]; };
 function drawTopFace(P, side = 0) {      // side: how strongly the side-view face already shows the near eye, nose and whiskers
   const a = smooth(clamp((RU - 0.3) / 0.4)); if (a <= 0) return;
+  const near = RC < 0 ? -1 : 1;                 // which flank the side-view face is on
+  const lookAt = smooth(clamp((facing(...rotN(P.head, 1, -0.3), 0) + 0.05) / 0.2));   // 0 when the face points away from the camera: no eyes seen from behind
   const H = P.head, hp = (x, y, z) => { const r = headPt(H, x, y, z); return pr(r[0], r[1], r[2]); };
   ctx.save();
+  {                                              // an eye can never poke out past the edge of the head: clip to the head's outline, seen from here
+    const prof = [[5, -34, 31], [30, -42, 32], [58, -37, 34], [78, -23, 22], [91, -8, 8], [88, 6, 8], [76, 19, 13], [50, 24, 24], [22, 28, 31], [3, 10, 31]], q = [];
+    for (const [x, y, w] of prof) for (const sd of [-1, 1]) q.push(hp(x, y, sd * w));
+    const h = hull2(q); ctx.beginPath(); ctx.moveTo(h[0][0], h[0][1]); for (let i = 1; i < h.length; i++) ctx.lineTo(h[i][0], h[i][1]); ctx.closePath(); ctx.clip();
+  }
   for (const sd of [-1, 1]) {
-    const f = clamp(facing(...rotN(H, 0.55, -0.45), sd * 0.7) * 2.2) * a * (sd > 0 ? 1 - side : 1); if (f <= 0) continue;   // the near eye is already drawn by the side-view face
+    const f = clamp(facing(...rotN(H, 0.55, -0.45), sd * 0.7) * 2.2) * a * (sd === near ? 1 - side : 1); if (f <= 0) continue;   // the near eye is already drawn by the side-view face
     const c0 = hp(58, -19, sd * 23), c1 = hp(64, -20, sd * 20), ang = Math.atan2(c1[1] - c0[1], c1[0] - c0[0]);
-    ctx.globalAlpha = PSTYLE.face === 'anime' ? clamp(f * 1.6) : f;
+    ctx.globalAlpha = (PSTYLE.face === 'anime' ? smooth(clamp((f - 0.3) / 0.06)) : f) * lookAt;   // solid once it shows: a half-faded eye looks like a grey ghost
     ctx.save(); ctx.translate(c0[0], c0[1]); ctx.rotate(ang);
     if (PSTYLE.face === 'anime') {
       const r = headPt(H, 58, -19, sd * 23), k = HS * 1.16 * camK(r[0], r[1], r[2]), up = hp(58, -31, sd * 21);
@@ -1044,11 +1052,29 @@ function drawTopFace(P, side = 0) {      // side: how strongly the side-view fac
     ctx.strokeStyle = '#020202'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.ellipse(0, 0, 7.1, 3.7, 0, 0, TAU); ctx.stroke();
     ctx.restore();
   }
+  ctx.restore();
   ctx.globalAlpha = a * clamp(facing(...rotN(H, 1, -0.3), 0) * 3);   // the nose only shows when the head faces the camera
   const n0 = hp(87, -8, 0), n1 = hp(90, -8, 0), na = Math.atan2(n1[1] - n0[1], n1[0] - n0[0]);
   ctx.save(); ctx.translate(n0[0], n0[1]); ctx.rotate(na);
-  ctx.fillStyle = faceTone().nose; ctx.beginPath(); ctx.ellipse(0, 0, 3.8, 5.2, 0, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.ellipse(-1.4, 0, 1, 2.4, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = faceTone().nose; ctx.beginPath(); ctx.ellipse(0, 0, 5, 6.6, 0, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,0.5)'; for (const d of [-1, 1]) { ctx.beginPath(); ctx.ellipse(-1.5, d * 2.4, 1.7, 0.9, 0, 0, TAU); ctx.fill(); }   // nostrils
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.ellipse(1.4, -1.4, 1.2, 2.6, 0, 0, TAU); ctx.fill();
   ctx.restore();
+  {                                              // seen head on: whisker pads either side of the nose, the ω mouth with its little fang, and the chin
+    const fr = a * clamp(facing(...rotN(H, 1, -0.3), 0) * 3) * (1 - clamp(side * 4));   // once the side face has its own mouth, this one steps aside
+    if (fr > 0.02) {
+      const F = faceTone(), r0 = headPt(H, 84, 0, 0), kk = HS * camK(r0[0], r0[1], r0[2]);
+      const square = smooth(clamp((facing(...rotN(H, 1, -0.3), 0) - 0.9) / 0.08));   // flat ovals only look right when seen square on
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.globalAlpha = fr * 0.75 * square; ctx.fillStyle = F.light ? COAT.muzzle : 'rgba(' + COAT.lt + ',0.16)';
+      for (const sd of [-1, 1]) { const c = hp(80, 3, sd * 9); ctx.beginPath(); ctx.ellipse(c[0], c[1], 11 * kk, 7.5 * kk, 0, 0, TAU); ctx.fill(); }          // whisker pads
+      ctx.globalAlpha = fr * 0.5 * square; ctx.fillStyle = 'rgba(0,0,0,0.5)'; const ch = hp(74, 20, 0); ctx.beginPath(); ctx.ellipse(ch[0], ch[1], 9 * kk, 3.2 * kk, 0, 0, TAU); ctx.fill();   // shadow under the chin
+      ctx.globalAlpha = fr; ctx.strokeStyle = F.lip; ctx.lineWidth = Math.max(1, 1.7 * kk);
+      const m0 = hp(87, -2, 0), m1 = hp(86, 3, 0), ml = hp(79, 7, -12), mr = hp(79, 7, 12), cl = hp(85, 8.5, -5), cr = hp(85, 8.5, 5);
+      ctx.beginPath(); ctx.moveTo(m0[0], m0[1]); ctx.lineTo(m1[0], m1[1]); ctx.moveTo(m1[0], m1[1]); ctx.quadraticCurveTo(cl[0], cl[1], ml[0], ml[1]); ctx.moveTo(m1[0], m1[1]); ctx.quadraticCurveTo(cr[0], cr[1], mr[0], mr[1]); ctx.stroke();
+      if (PSTYLE.fang) { const g0 = hp(84.5, 7, -4), g1 = hp(84.5, 7, -1.6), g2 = hp(84.5, 11, -3); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#050506'; ctx.lineWidth = Math.max(0.5, 0.6 * kk); ctx.beginPath(); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(g1[0], g1[1]); ctx.lineTo(g2[0], g2[1]); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      ctx.restore();
+    }
+  }
   if (TALKW > 0.02) {
     const op = TALKW * (0.35 + 0.65 * Math.abs(Math.sin(STL * 9)));
     ctx.globalAlpha = a * clamp(facing(...rotN(H, 1, -0.3), 0) * 3);
@@ -1060,7 +1086,7 @@ function drawTopFace(P, side = 0) {      // side: how strongly the side-view fac
   const sw = 2 * Math.sin(STL * 2.3);
   const whA = ctx.globalAlpha;
   for (const sd of [-1, 1]) for (const [ex, ey, ez] of [[104, -3, 44], [99, 3, 56], [91, 8, 62], [81, 10, 58]]) {
-    const sf = clamp(0.35 + facing(0, 0, sd) * 1.6) * (sd > 0 ? 1 - side : 1); if (sf <= 0) continue; ctx.globalAlpha = whA * sf;
+    const sf = clamp(0.35 + facing(0, 0, sd) * 1.6) * (sd === near ? 1 - side : 1); if (sf <= 0) continue; ctx.globalAlpha = whA * sf;
     const p0 = hp(78, 4, sd * 18), p1 = hp(ex + sw, ey, sd * ez), m = hp((78 + ex) / 2, (4 + ey) / 2 + 5, sd * (14 + ez) / 2);
     ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.quadraticCurveTo(m[0], m[1], p1[0], p1[1]); ctx.stroke();
   }
