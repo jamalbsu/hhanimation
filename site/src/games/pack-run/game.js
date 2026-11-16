@@ -1363,10 +1363,11 @@ resize();
 setState('title'); show('start'); hud(false); updateHud(true);
 root.classList.add('is-ready');
 // ?shot&faces: a contact sheet of one cat painted at a sweep of camera angles, for looking at the faces.
-//   ?coat= picks the coat, ?tilt= the camera's height, ?from= and ?step= the first angle and the gap (degrees), ?zoom= how big.
+//   ?coat= picks the coat, ?tilt= the camera's height, ?from= and ?step= the first angle and the gap (degrees), ?count= how many angles, ?zoom= how big,
+//   ?t= moves the gait on (seconds), ?focus=head centres the head.
 function facesSheet() {
   const coat = COATS[params.get('coat')] ? params.get('coat') : 'panther', tilt = +(params.get('tilt') || 12), from = +(params.get('from') || -180), step = +(params.get('step') || 30), zoom = +(params.get('zoom') || 1);
-  const n = Math.round(360 / step), cols = Math.min(n, +(params.get('cols') || 6)), rows = Math.ceil(n / cols), cw = Math.floor(CW / cols), ch = Math.floor(CH / rows);
+  const n = +(params.get('count') || Math.round(360 / step)), cols = Math.min(n, +(params.get('cols') || 6)), rows = Math.ceil(n / cols), cw = Math.floor(CW / cols), ch = Math.floor(CH / rows);
   const marks = (PACK.find(c => c.coat === coat) || PACK[0]).marks;
   main.fillStyle = '#cdb98f'; main.fillRect(0, 0, CW, CH);
   const set = catSet(cw, ch, mk), ps = Math.min(cw / 640, ch / 400) * zoom;
@@ -1377,7 +1378,7 @@ function facesSheet() {
       CAMYAW = yaw; CAMTILT = tilt; CH_D = 1150; FA = 1; setTurn(1);
       const h = pr(205, -125, 0); ax = cw / 2 - ps * h[0]; ay = ch / 2 - ps * h[1];
     }
-    paintCat(set, { t: STL, ph: 0, yaw, tilt, dist: 1150, sc: ps, k: 1, ax, ay, coat, marks, talk: +(params.get('talk') || 0) });
+    paintCat(set, { t: STL + +(params.get('t') || 0), ph: 0, yaw, tilt, dist: 1150, sc: ps, k: 1, ax, ay, coat, marks, talk: +(params.get('talk') || 0) });
     const x = (i % cols) * cw, y = Math.floor(i / cols) * ch;
     main.drawImage(set.c, x, y);
     main.fillStyle = 'rgba(0,0,0,0.6)'; main.font = '700 ' + Math.round(ch * 0.07) + 'px sans-serif'; main.fillText('yaw ' + yaw + '  tilt ' + tilt, x + 8, y + ch * 0.09);

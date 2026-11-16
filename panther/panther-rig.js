@@ -667,6 +667,77 @@ function drawMarks(c, P, kind) {
   c.globalAlpha = 1;
 }
 
+// ---- the rear view ------------------------------------------------------------------------------------
+// Seen from behind, the cat is one flat silhouette. These paintings (into the body canvas, so they stay inside it) give the back end
+// its volume: a dome of light and a shaded edge on each haunch with a crease between them, legs with a lit and a shaded side, hocks,
+// toes, a tail that stands out from the rump (ringed on the spotted and striped coats), and the coat's markings carried onto the thighs.
+function inPoly(pts, x, y) { let ins = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const a = pts[i], b = pts[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) ins = !ins; } return ins; }
+function thighMarks(c, ov, hj, seed) {       // markings on a haunch, laid out from the hip joint so they move with the leg
+  for (let i = -5; i <= 5; i++) for (let j = -5; j <= 5; j++) {
+    const x = hj[0] + i * 12 + (hh(i + seed, j) - 0.5) * 7, y = hj[1] + j * 12 + (hh(j, i + seed) - 0.5) * 7;
+    const u = ((x - ov.cx) * ov.ca + (y - ov.cy) * ov.sa) / ov.rx, v = (-(x - ov.cx) * ov.sa + (y - ov.cy) * ov.ca) / ov.ry;
+    if (u * u + v * v > 0.78) continue;
+    const r = 3.6 + 1.7 * hh(i * 3 + seed, j * 5);
+    if (MARKS === 'rosettes') {
+      c.globalAlpha = 1; c.fillStyle = COAT.rosetteFill || 'rgba(150,92,30,0.45)'; c.beginPath(); c.ellipse(x, y, r * 0.95, r * 0.8, i, 0, TAU); c.fill();
+      c.strokeStyle = COAT.mark; c.lineWidth = 1.5;
+      for (let q = 0; q < 4; q++) { const a = i + q * TAU / 4; c.beginPath(); c.arc(x, y, r, a, a + TAU / 4 * (0.5 + 0.3 * hh(q + i, j))); c.stroke(); }
+    } else if (MARKS === 'spots') { c.fillStyle = COAT.mark; c.beginPath(); c.arc(x, y, r * 0.6, 0, TAU); c.fill(); }
+    else if (MARKS === 'stripes' && j % 2 === 0) { c.strokeStyle = COAT.mark; c.lineWidth = 3.2; c.beginPath(); c.moveTo(x - 7, y + 1); c.quadraticCurveTo(x, y - 3, x + 7, y + 1); c.stroke(); }
+  }
+}
+function rearDetail(P, k) {
+  const c = cBody, lt = COAT.lt, LH = P.legs.LH, RH = P.legs.RH, hips = [LH, RH].filter(L => L && L.K);
+  const glowAt = (x, y, r, a) => { const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(' + lt + ',' + a + ')'); g.addColorStop(1, 'rgba(' + lt + ',0)'); c.fillStyle = g; c.fillRect(x - r, y - r, 2 * r, 2 * r); };
+  const darkAt = (x, y, r, a) => { const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(0,0,0,' + a + ')'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(x - r, y - r, 2 * r, 2 * r); };
+  const line = (pts, dx, dy) => { c.beginPath(); c.moveTo(pts[0][0] + dx, pts[0][1] + dy); for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0] + dx, pts[i][1] + dy); c.stroke(); };
+  c.save(); c.lineJoin = 'round'; c.lineCap = 'round'; c.globalAlpha = 1;
+  // the haunches: an oval of muscle along hip-to-knee (the side outline collapses to a sliver from behind): a dome of light, rolling into shadow at its edge
+  [LH, RH].forEach((L, n) => {
+    if (!L || !L.K) return;
+    const hx = L.HJ[0], hy = L.HJ[1], kx = L.K[0], ky = L.K[1], len = Math.hypot(kx - hx, ky - hy), a = Math.atan2(ky - hy, kx - hx), w = Math.max(15, L.thr || 20);
+    const ov = { cx: (hx + kx) / 2, cy: (hy + ky) / 2 - 3, rx: len / 2 + w * 0.55, ry: w + 3, ca: Math.cos(a), sa: Math.sin(a) };
+    c.save(); c.translate(ov.cx, ov.cy); c.rotate(a); c.scale(ov.rx, ov.ry);
+    const g = c.createRadialGradient(-0.2, -0.3, 0.05, 0, 0, 1);
+    g.addColorStop(0, 'rgba(' + lt + ',' + 0.3 * k + ')'); g.addColorStop(0.55, 'rgba(' + lt + ',' + 0.05 * k + ')'); g.addColorStop(0.82, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + 0.42 * k + ')');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, 1, 0, TAU); c.fill();
+    c.restore();
+    if (MARKS) thighMarks(c, ov, L.HJ, n * 7);
+  });
+  if (hips.length === 2) {                                            // the crease between the haunches, and the shadow under the tail
+    const mx = (LH.HJ[0] + RH.HJ[0]) / 2, my = (LH.HJ[1] + RH.HJ[1]) / 2;
+    darkAt(mx, my + 10, 22, 0.4 * k); darkAt(mx, my + 34, 18, 0.28 * k);
+  }
+  // the legs below the haunch: a lit edge on the left, a shaded one on the right, a bright hock, toes
+  for (const L of [LH, RH]) {
+    if (!L || !L.Hk) continue;
+    const low = [L.K, L.Hk, L.F];
+    c.strokeStyle = 'rgba(0,0,0,' + 0.2 * k + ')'; c.lineWidth = 8; line(low, 4.5, 0);
+    c.strokeStyle = 'rgba(' + lt + ',' + 0.15 * k + ')'; c.lineWidth = 4.5; line(low, -3.8, -1);
+    glowAt(L.Hk[0] - 2, L.Hk[1] - 3, 12, 0.22 * k); darkAt(L.Hk[0] + 4, L.Hk[1] + 6, 10, 0.25 * k);
+    c.strokeStyle = 'rgba(0,0,0,' + 0.55 * k + ')'; c.lineWidth = 1.3;
+    for (let i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(L.toe[0] + i * 3.8, L.toe[1] - 0.5); c.lineTo(L.toe[0] + i * 4.7, L.toe[1] + 4.6); c.stroke(); }
+    c.fillStyle = 'rgba(' + lt + ',' + 0.16 * k + ')'; c.beginPath(); c.ellipse(L.toe[0] - 1.5, L.toe[1] - 2.2, 4.5, 2.2, 0, 0, TAU); c.fill();
+  }
+  // the tail: its own tube with a dark edge so it stands out from the rump and legs behind it, a lit top, rings on the marked coats
+  const T = P.tail, n = T ? T.length - 1 : 0;
+  if (n > 1) {
+    const rr = i => lerp(10.5, 6.6, Math.pow(i / n, 0.8));
+    darkAt(T[0][0], T[0][1] + 8, 20, 0.3 * k);
+    c.globalAlpha = k;
+    c.fillStyle = 'rgba(0,0,0,0.42)'; for (let i = 0; i < n; i++) capsule(c, T[i][0], T[i][1], rr(i) + 1.8, T[i + 1][0], T[i + 1][1], rr(i + 1) + 1.8);
+    c.fillStyle = COAT.fur[1]; for (let i = 0; i < n; i++) capsule(c, T[i][0], T[i][1], rr(i), T[i + 1][0], T[i + 1][1], rr(i + 1));
+    if (MARKS) {                                 // bands across the tail, and a dark tip
+      c.fillStyle = COAT.mark;
+      for (let i = 1; i < n; i++) if (i % 2 === 1) { const m = (u) => [lerp(T[i][0], T[i + 1][0], u), lerp(T[i][1], T[i + 1][1], u)], p = m(0.36), q = m(0.52); capsule(c, p[0], p[1], rr(i) * 0.99, q[0], q[1], rr(i + 1) * 0.99); }
+      const e = T[n - 1], tip = [lerp(e[0], T[n][0], 0.35), lerp(e[1], T[n][1], 0.35)]; capsule(c, tip[0], tip[1], rr(n - 1) * 0.99, T[n][0], T[n][1], rr(n) * 0.99);
+    }
+    c.strokeStyle = 'rgba(' + lt + ',0.26)'; c.lineWidth = 3; line(T, -2.4, -2);
+    c.globalAlpha = 1;
+  }
+  c.restore();
+}
+
 function drawPanther(t, ph = 0) {
   const P = pose(Math.max(0, STL - ph), STL);
   JL = P.lift; JP = P.pitch;
@@ -803,6 +874,7 @@ function drawPanther(t, ph = 0) {
   cBody.beginPath(); cBody.moveTo(LH.HJ[0] + 30, LH.HJ[1] - 4); cBody.quadraticCurveTo(LH.HJ[0] + 26, LH.HJ[1] + 30, LH.K[0] + 8, LH.K[1]); cBody.stroke();
   cBody.globalAlpha = 1;
   if (COAT.belly || MARKS) drawMarks(cBody, P, MARKS);           // pale underside, stripes or spots
+  if (RS > 0.45) rearDetail(P, smooth(clamp((RS - 0.45) / 0.4)));   // seen from behind: haunches, legs, paws and tail get their volume
   if (COAT.muzzle) {                                              // pale muzzle and chin
     cBody.save(); cBody.transform(...headAffine(P.head, 10)); cBody.globalAlpha = clamp(vis * 1.4 + top * 0.6);
     const mz = cBody.createRadialGradient(77, 6, 2, 77, 6, 26);
