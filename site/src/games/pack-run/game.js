@@ -1,6 +1,6 @@
 // =====================================================================================
 //  PACK RUN: a Panthers Pack game for happyhillz.com
-//  The pack runs down a five-lane savanna trail while one huge threat charges straight at it:
+//  The pack runs down a ten-lane savanna trail while one huge threat charges straight at it:
 //  elephants, a buffalo stampede or a rockslide. Switch lanes, jump, roar the threat off the trail,
 //  grab stars, last 45 seconds. (A roar spooks an elephant or buffalo away and cracks a boulder: no one gets hurt.)
 //
@@ -142,8 +142,9 @@ const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } } };
 
 const ROUND = 45;                 // seconds in a round
-const LANES = 5, MID = (LANES - 1) / 2;     // lanes 0 to 4; the pack starts in the middle one
-const LANE = 240;                 // lane spacing (body units)
+const LANES = 10, MID = (LANES - 1) / 2;    // lanes 0 to 9; the pack starts in one of the two middle ones
+const START = Math.floor(MID), WIDE = LANES / 5;   // WIDE: how much bigger a wave gets than on the old five-lane trail
+const LANE = 200;                 // lane spacing (body units)
 const laneZ = l => (l - MID) * LANE;
 const JD = 0.8;                   // jump length (s)
 const F_SPAWN = 5200;             // threats appear this far up the trail
@@ -197,7 +198,7 @@ function resize() {
 const wideNow = () => CW / CH > 1.15;
 const titleCam = () => wideNow() ? { yaw: -26, tilt: 9, dist: 1700, zoom: 1.12, fx: 0.62, fy: 0.72, ff: -100, follow: 0 }
                                   : { yaw: -24, tilt: 10, dist: 1700, zoom: 0.94, fx: 0.5, fy: 0.33, ff: -100, follow: 0 };
-const CAMS = { title: titleCam(), run: { yaw: 90, tilt: 23, dist: 1150, zoom: 1, fx: 0.5, fy: 0.78, ff: 0, follow: 0.72 } };
+const CAMS = { title: titleCam(), run: { yaw: 90, tilt: 23, dist: 1150, zoom: 1, fx: 0.5, fy: 0.78, ff: 0, follow: 0.86 } };
 CAMS.over = CAMS.title;
 const cam = { ...CAMS.title };
 let camFrom = CAMS.title, camTo = CAMS.title, camT0 = 0, camDur = 1;
@@ -649,7 +650,7 @@ let level = [params.get('level'), store.get('packrun.level')].find(l => LEVELS[l
 const obs = [], puffs = [], blasts = [], spits = [];
 const pickup = o => o.kind === 'star' || o.kind === 'gem';
 /** @type {RunState} */
-const run = { warned: false, lastGap: 0, botT: 0, t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 0, spitT: 0, cancels: 0, gems: 0 };
+const run = { warned: false, lastGap: 0, botT: 0, t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: START, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 0, spitT: 0, cancels: 0, gems: 0 };
 const progress = () => clamp(run.t / ROUND);
 const airborne = () => { const J = (STL - run.jumpT) / JD; return J > 0.14 && J < 0.9; };
 const scoreNow = () => Math.floor(run.dist / 100) + run.stars * 25 + run.bonus + (run.won ? 200 : 0);
@@ -673,7 +674,7 @@ function tell(event, extra) {
 function startRound() {
   if (state === 'go' || state === 'run') return;
   sound.unlock();
-  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: MID, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 5 + Math.random() * 2, spitT: 6, cancels: 0, gems: 0, warned: false });
+  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: START, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: START, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 5 + Math.random() * 2, spitT: 6, cancels: 0, gems: 0, warned: false });
   for (const o of obs) dropPic('b' + o.id);
   obs.length = 0; blasts.length = 0; spits.length = 0;
   setState('go');
@@ -710,7 +711,7 @@ function spawnWave() {
   if (T.kind === 'boulder') {
     const row = run.t - run.lastRow > 3.2 && r() < lerp(0.18, 0.4, pg) && run.wave > 2;
     const near = shuffle(lanes.filter(l => Math.abs(l - run.lane) <= 1), r), rest = shuffle(lanes.filter(l => Math.abs(l - run.lane) > 1), r);
-    const n = row ? LANES : 1 + (r() < lerp(0.3, 0.6, pg) ? 1 : 0) + (r() < lerp(0.1, 0.45, pg) + LEVELS[level].block * 0.3 ? 1 : 0);
+    const n = row ? LANES : Math.round((1 + (r() < lerp(0.3, 0.6, pg) ? 1 : 0) + (r() < lerp(0.1, 0.45, pg) + LEVELS[level].block * 0.3 ? 1 : 0)) * WIDE);
     const pick = row ? lanes : (r() < 0.75 ? near.concat(rest) : rest.concat(near)).slice(0, n), big = !row && r() < 0.25;   // mostly at the pack
     if (row) run.lastRow = run.t;
     const v = T.v + r() * 80;
@@ -722,15 +723,15 @@ function spawnWave() {
   }
   // the open lane drifts at most a lane or two from the last one, so it can always be reached
   const first = run.wave === 1;
-  const gap = first ? (run.lane < MID ? run.lane + 1 : run.lane - 1) : r() < 0.6 ? pickNear(run.lastGap ?? MID, r) : clamp(run.lastGap + Math.round((r() - 0.5) * 4), 0, LANES - 1);
-  const n = first ? 1 : Math.min(LANES - 1, 1 + Math.floor(r() * (lerp(T.block[0], T.block[1], pg) + LEVELS[level].block)));
+  const gap = first ? (run.lane < MID ? run.lane + 1 : run.lane - 1) : r() < 0.6 ? pickNear(run.lastGap ?? START, r) : clamp(run.lastGap + Math.round((r() - 0.5) * 5), 0, LANES - 1);
+  const n = first ? 1 : Math.min(LANES - 1, 1 + Math.floor(r() * (lerp(T.block[0], T.block[1], pg) + LEVELS[level].block) * WIDE));
   const others = shuffle(lanes.filter(l => l !== gap), r);
   if (others.includes(run.lane) && r() < 0.7) others.unshift(...others.splice(others.indexOf(run.lane), 1));   // usually aimed at the pack
   const blocked = first ? [run.lane] : others.slice(0, n);
   run.lastGap = gap;
   for (const l of blocked) {
     // a wide wave sends fewer animals down each lane, so the herd on screen stays about the same size
-    const herd = T.kind === 'buffalo' ? (n <= 2 ? 2 + (r() < pg ? 1 : 0) : 1 + (r() < 0.45 ? 1 : 0)) : 1 + (n <= 2 && r() < pg * 0.45 ? 1 : 0);
+    const herd = T.kind === 'buffalo' ? (n <= 2 * WIDE ? 2 + (r() < pg ? 1 : 0) : 1 + (r() < 0.45 ? 1 : 0)) : 1 + (n <= 2 * WIDE && r() < pg * 0.45 ? 1 : 0);
     for (let i = 0; i < herd; i++) obs.push(mkObs(T.kind, l, F_SPAWN + r() * 160 + i * (T.kind === 'buffalo' ? 210 + r() * 80 : 430), { v: T.v + r() * 60, size: T.kind === 'buffalo' ? 0.95 + r() * 0.15 : 0.96 + r() * 0.14, dz: (r() - 0.5) * (T.kind === 'buffalo' ? 70 : 30) }));
   }
   const free = lanes.filter(l => !blocked.includes(l));

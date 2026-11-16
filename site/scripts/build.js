@@ -113,7 +113,7 @@ function card(ep, { play = false, meta = false } = {}) {
 // (../panther/panther-rig.js, the same file every episode builder uses) and the elephants and buffalo of the
 // episode engine (the "hoofed animals" section of the trailer episode).
 const GAME = {
-  path: '/games/pack-run/', name: 'Pack Run', published: '2026-11-14', updated: '2026-11-16',   // bump "updated" when the game changes
+  path: '/games/pack-run/', name: 'Pack Run', published: '2026-11-14', updated: '2026-11-17',   // bump "updated" when the game changes
   shot: 'src/games/pack-run/shot.png', image: '/games/pack-run/share.jpg', card: '/games/pack-run/card.webp',
   // each threat, with the episode it comes from
   threats: [['elephants', 'Elephants', 'Head-On Elephant Herd'], ['buffalo', 'Buffalo', 'Buffalo Stampede'], ['boulders', 'Boulders', 'Rockslide']],

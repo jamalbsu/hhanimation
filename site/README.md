@@ -56,7 +56,7 @@ To preview locally, use the `happyhillz-site` entry in `../.claude/launch.json` 
 
 ## The game: Pack Run
 
-The pack runs down a five-lane savanna trail while one huge threat charges straight at it, the rule of every episode. The player picks the threat: an elephant charge, a buffalo stampede or a rockslide. A round lasts 45 seconds.
+The pack runs down a ten-lane savanna trail while one huge threat charges straight at it, the rule of every episode. The player picks the threat: an elephant charge, a buffalo stampede or a rockslide. A round lasts 45 seconds.
 
 **How to play.** Swipe left or right (arrow keys, or A and D) to switch lanes. Swipe up (up arrow or W) to jump. Tap (Space, F or J; hold to keep roaring) to roar: the lead panther fires a blast of sound down its lane. A roar never hurts anything. It spooks a buffalo off the trail with one hit and an elephant with three, and cracks a boulder with two (a big one takes three) or a log with one. Clearing them scores 20, 50, 30 and 10 points. Logs and boulders can also be jumped; elephants and buffalo can't.
 
