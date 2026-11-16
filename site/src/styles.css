@@ -330,6 +330,7 @@ h3 { font-size: 1.55rem; line-height: 1.04; }
 .game__time.is-low { background: var(--hot); color: #fff; }
 .game__armor { order: 5; display: inline-flex; flex-direction: column; gap: 4px; padding: .3em .6em .4em; font: 400 clamp(.85rem, 2.2vw, 1.05rem)/1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--ink); background: var(--armor, #4fd2ff); border: 2px solid var(--ink); transform: skewX(var(--skew)); box-shadow: 3px 3px 0 var(--ink); }
 .game__armor[hidden] { display: none; }
+.game__armor--nitro { --armor: #ff7a1a; }
 .game__armor-bar { display: block; height: 6px; background: rgba(11,11,15,.25); border-radius: 3px; overflow: hidden; }
 .game__armor-bar i { display: block; height: 100%; width: calc(var(--left, 1) * 100%); background: var(--ink); }
 .game__paws { display: flex; gap: 3px; margin-left: auto; padding-top: 4px; }

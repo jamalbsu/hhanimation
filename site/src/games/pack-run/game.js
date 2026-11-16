@@ -163,10 +163,16 @@ const ARMORS = {
   triple: { name: 'Triple Roar', c: '#ff4fb8', c2: '#ffc4e8', dur: 8 },             // every roar goes down three lanes
   mirror: { name: 'Mirror Armor', c: '#9be05a', c2: '#e6ffc8', dur: 9 },            // shots bounce back at whoever threw them
   twin:   { name: 'Twin Stream', c: '#a77bff', c2: '#e4d6ff', dur: 7 },             // two streams of roars pour out on their own
+  laser:  { name: 'Laser', c: '#ff3b5c', c2: '#ffd6de', dur: 6 },                  // a beam down the pack's lane wipes out everything in it
 };
+const LASER_RANGE = 3800, NITRO_DIST = 9000;      // how far the laser reaches; how far a nitro can lasts (at double speed: about three seconds)
 const TWIN_EVERY = 0.16;
-// levels: hard sends about twice the enemies, closes more lanes and shoots twice as often
-const LEVELS = { easy: { name: 'Easy', every: 1, block: 0, spit: 1 }, hard: { name: 'Hard', every: 0.55, block: 0.9, spit: 2 } };
+// levels: hard sends far more enemies, closes most of the trail at once, runs faster and shoots more, from further away
+// speed and v: how fast the pack and the herds go; reach: how many lanes away a shooter can still aim at the pack; spitAt: when the shooting starts
+const LEVELS = {
+  easy: { name: 'Easy', every: 1, block: 0, spit: 1, speed: 1, v: 1, reach: 1, spitAt: 6 },
+  hard: { name: 'Hard', every: 0.4, block: 1.6, spit: 2.6, speed: 1.1, v: 1.15, reach: 3, spitAt: 3.5 },
+};
 const ARMOR_KEYS = Object.keys(ARMORS);
 // the herds shoot back: elephants squirt water balls from their trunks, buffalo fling mud. A roar and a ball cancel out.
 const SPIT = { elephant: { kind: 'water', v: 1150, y: -210 }, buffalo: { kind: 'mud', v: 1300, y: -110 } };
@@ -265,7 +271,7 @@ function catJob(c, i, box) {                // where the cat is on screen now, a
   const w = Math.ceil(bw * ps), h = Math.ceil(bh * ps), d = c.dim;
   if (!d.w || w > d.w || h > d.h || w < d.w * 0.72 || h < d.h * 0.72) { d.w = w; d.h = h; }   // keep the canvas size steady
   const seen = !(px + box.x1 * s < 0 || px + box.x0 * s > CW || py + box.y0 * s > CH || py + box.y1 * s < 0);
-  const talk = i === 0 ? clamp(1 - (STL - run.fireT) / 0.4) : 0;            // the leader's head jerks forward as it roars
+  const talk = i === 0 ? (run.armor && run.armor.kind === 'laser' ? 1 : clamp(1 - (STL - run.fireT) / 0.4)) : 0;            // the leader's head jerks forward as it roars
   return { key: 'c' + i, i, px, py, seen, s, t: STL, ph: c.ph, yaw: cam.yaw + c.turn, tilt: cam.tilt, dist: cam.dist, sc: ps / k, k, ax: -box.x0 * ps, ay: -box.y0 * ps, w: d.w, h: d.h, coat: c.coat, marks: c.marks, talk };
 }
 const due = j => { const p = pics.get(j.key); return j.seen && (redrawAll || !p || STL - p.pic.t > 1 / 32 || (j.talk > 0.9 && !(p.pic.talk > 0.9))); };   // at most 30 poses a second
@@ -498,7 +504,7 @@ function drawPuff(d) {
   const k = kAt(d.f, d.y, d.z) * SC, p = S(d.f, d.y, d.z), r = d.r * k, a = d.a * Math.pow(1 - d.age / d.life, 1.6);
   if (r < 0.5 || a < 0.01) return;
   const g = main.createRadialGradient(p[0], p[1], 0, p[0], p[1], r);
-  g.addColorStop(0, `rgba(226,196,146,${a})`); g.addColorStop(1, 'rgba(226,196,146,0)');
+  const cc = d.col || '226,196,146'; g.addColorStop(0, `rgba(${cc},${a})`); g.addColorStop(1, `rgba(${cc},0)`);
   main.fillStyle = g; main.fillRect(p[0] - r, p[1] - r, r * 2, r * 2);
 }
 function drawSpark(d) {
@@ -594,12 +600,40 @@ function drawArmor() {
   if (a.kind === 'bubble') for (let i = 0; i < Math.min(a.hits, 3); i++) { main.fillStyle = A.c2; main.strokeStyle = '#0b0b0f'; main.lineWidth = Math.max(1, 2 * k); main.beginPath(); main.arc(c[0] + (i - (Math.min(a.hits, 3) - 1) / 2) * 26 * k, c[1] - 230 * k - 18 * k, 8 * k, 0, TAU); main.fill(); main.stroke(); }   // hits left
   main.globalAlpha = 1;
 }
+function drawNitro(o, al) {                 // a nitro can: a red canister with a lightning bolt, glowing orange
+  const bob = Math.sin(STL * 5 + o.seed) * 6, k = kAt(o.f, -o.hg, o.z) * SC, p = S(o.f, -o.hg - bob, o.z), r = 40 * k;
+  main.globalAlpha = al;
+  const g = main.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 2.6); g.addColorStop(0, 'rgba(255,170,60,0.75)'); g.addColorStop(1, 'rgba(255,110,20,0)');
+  main.fillStyle = g; main.fillRect(p[0] - r * 2.6, p[1] - r * 2.6, r * 5.2, r * 5.2);
+  const w = r * 0.78, h = r * 1.15, c = main;
+  const gr = c.createLinearGradient(p[0] - w, 0, p[0] + w, 0); gr.addColorStop(0, '#ff3b1a'); gr.addColorStop(0.45, '#ff8a2a'); gr.addColorStop(1, '#b81f0a');
+  c.fillStyle = gr; c.strokeStyle = '#0b0b0f'; c.lineWidth = Math.max(1, 3 * k); c.lineJoin = 'round';
+  c.beginPath(); c.moveTo(p[0] - w, p[1] - h * 0.7); c.quadraticCurveTo(p[0], p[1] - h * 1.15, p[0] + w, p[1] - h * 0.7); c.lineTo(p[0] + w, p[1] + h * 0.8); c.quadraticCurveTo(p[0], p[1] + h * 1.1, p[0] - w, p[1] + h * 0.8); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = '#ffe600'; c.beginPath(); c.moveTo(p[0] + w * 0.15, p[1] - h * 0.62); c.lineTo(p[0] - w * 0.5, p[1] + h * 0.1); c.lineTo(p[0] - w * 0.05, p[1] + h * 0.1); c.lineTo(p[0] - w * 0.2, p[1] + h * 0.7); c.lineTo(p[0] + w * 0.55, p[1] - h * 0.12); c.lineTo(p[0] + w * 0.1, p[1] - h * 0.12); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.6)'; c.beginPath(); c.ellipse(p[0] - w * 0.55, p[1] - h * 0.35, w * 0.12, h * 0.3, 0, 0, TAU); c.fill();
+  main.globalAlpha = 1;
+}
+function drawLaser() {                       // a beam from the leader's mouth down its lane, all the way up the trail
+  const lead = PACK[0], f0 = lead.fx + 110, y = -190, A = ARMORS.laser;
+  const a = S(f0, y, lead.z), b = S(LASER_RANGE, y, lead.z), kA = kAt(f0, y, lead.z) * SC, kB = kAt(LASER_RANGE, y, lead.z) * SC;
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L, pulse = 1 + 0.12 * Math.sin(STL * 55);
+  const left = run.armor.until - STL, al = (left < 1.5 ? (Math.floor(STL * 10) % 2 ? 0.4 : 1) : 1) * clamp((STL - run.armor.t0) / 0.15);
+  const beam = (w, fill) => {
+    const wa = w * kA * pulse, wb = w * kB * pulse; main.fillStyle = fill; main.beginPath();
+    main.moveTo(a[0] + nx * wa, a[1] + ny * wa); main.lineTo(b[0] + nx * wb, b[1] + ny * wb); main.lineTo(b[0] - nx * wb, b[1] - ny * wb); main.lineTo(a[0] - nx * wa, a[1] - ny * wa); main.closePath(); main.fill();
+  };
+  main.globalAlpha = al;
+  beam(80, 'rgba(255,59,92,0.2)'); beam(46, 'rgba(255,59,92,0.45)'); beam(22, A.c2); beam(9, '#ffffff');
+  const g = main.createRadialGradient(a[0], a[1], 0, a[0], a[1], 90 * kA); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.3, 'rgba(255,90,120,0.7)'); g.addColorStop(1, 'rgba(255,59,92,0)');
+  main.fillStyle = g; main.fillRect(a[0] - 90 * kA, a[1] - 90 * kA, 180 * kA, 180 * kA);
+  main.globalAlpha = 1;
+}
 function drawComic() {
-  const sp = clamp((packV - 700) / 600) * (state === 'run' ? 1 : 0.5) * (REDUCE ? 0.4 : 1);
+  const sp = Math.min(1.6, clamp((packV - 700) / 600) + nitroK * 0.6) * (state === 'run' ? 1 : 0.5) * (REDUCE ? 0.4 : 1);
   if (sp > 0.02 && cam.yaw > 60) {          // speed lines streaming out from where the trail meets the sky
     const vp = S(40000, 0, CAMZ), r = rng(Math.floor(STL * 14)), M = Math.hypot(CW, CH);
     main.strokeStyle = `rgba(255,255,255,${0.32 * sp})`; main.lineCap = 'round';
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0, n = 26 + Math.round(nitroK * 26); i < n; i++) {
       const a = r() * TAU, r0 = M * (0.36 + r() * 0.2), r1 = r0 + M * (0.12 + r() * 0.22);
       main.lineWidth = (1 + r() * 2.5) * DPR; main.beginPath(); main.moveTo(vp[0] + Math.cos(a) * r0, vp[1] + Math.sin(a) * r0); main.lineTo(vp[0] + Math.cos(a) * r1, vp[1] + Math.sin(a) * r1); main.stroke();
     }
@@ -607,6 +641,11 @@ function drawComic() {
   const v = main.createRadialGradient(CW / 2, CH / 2, Math.min(CW, CH) * 0.45, CW / 2, CH / 2, Math.hypot(CW, CH) * 0.62);
   v.addColorStop(0, 'rgba(60,30,0,0)'); v.addColorStop(1, 'rgba(60,30,0,0.28)');
   main.fillStyle = v; main.fillRect(0, 0, CW, CH);
+  if (nitroK > 0.02) {                       // nitro: the edges of the screen glow orange
+    const nv = main.createRadialGradient(CW / 2, CH * 0.6, Math.min(CW, CH) * 0.3, CW / 2, CH * 0.6, Math.hypot(CW, CH) * 0.6);
+    nv.addColorStop(0, 'rgba(255,120,20,0)'); nv.addColorStop(1, `rgba(255,110,20,${0.38 * nitroK})`);
+    main.fillStyle = nv; main.fillRect(0, 0, CW, CH);
+  }
   if (flash > 0.01) { main.fillStyle = `rgba(255,255,255,${flash})`; main.fillRect(0, 0, CW, CH); }
 }
 
@@ -627,7 +666,7 @@ function render() {
     if (!inFront(o.f, o.z, -100) || al <= 0.01) continue;
     const d = depthOf(o.f, o.z) + (pickup(o) ? -1 : 0), bj = herd ? beastJob(o) : null;
     if (bj) beasts.push(bj);
-    items.push({ d, draw: o.kind === 'boulder' ? () => drawBoulder(o, al) : o.kind === 'log' ? () => drawLog(o, al) : o.kind === 'star' ? () => drawStar(o, al) : o.kind === 'gem' ? () => drawGem(o, al) : crew.length ? () => drawPic(bj, al) : () => drawBeastHere(bj, al) });
+    items.push({ d, draw: o.kind === 'boulder' ? () => drawBoulder(o, al) : o.kind === 'log' ? () => drawLog(o, al) : o.kind === 'star' ? () => drawStar(o, al) : o.kind === 'gem' ? () => drawGem(o, al) : o.kind === 'nitro' ? () => drawNitro(o, al) : crew.length ? () => drawPic(bj, al) : () => drawBeastHere(bj, al) });
   }
   for (const p of puffs) if (inFront(p.f, p.z, p.y)) items.push({ d: depthOf(p.f, p.z) - 30, draw: () => (p.ring ? drawRing(p) : p.spark ? drawSpark(p) : drawPuff(p)) });
   for (const b of blasts) if (inFront(b.f, b.z, b.y)) items.push({ d: depthOf(b.f, b.z) - 40, draw: () => drawBlast(b) });
@@ -637,6 +676,7 @@ function render() {
   PACK.forEach((c, i) => items.push({ d: depthOf(c.fx, c.z), draw: () => drawPic(cats[i], blink) }));
   for (const s of spits) if (inFront(s.f, s.z, s.y)) items.push({ d: depthOf(s.f, s.z) - 40, draw: () => drawSpit(s) });
   if (run.armor && state !== 'title') items.push({ d: Math.min(...PACK.map(c => depthOf(c.fx, c.z))) - 50, draw: drawArmor });   // over the pack
+  if (run.armor && run.armor.kind === 'laser' && state === 'run') items.push({ d: depthOf(PACK[0].fx, PACK[0].z) - 45, draw: drawLaser });
   items.sort((a, b) => b.d - a.d);
   for (const it of items) it.draw();
   drawComic();
@@ -648,9 +688,10 @@ let state = 'title', stateT = 0, paused = false, packV = 0, packZ = 0;
 let threat = [params.get('threat'), store.get('packrun.threat')].find(t => THREATS[t]) || 'elephants';
 let level = [params.get('level'), store.get('packrun.level')].find(l => LEVELS[l]) || 'easy';   // ?level=hard, for testing   // ?threat=buffalo picks one, for testing
 const obs = [], puffs = [], blasts = [], spits = [];
-const pickup = o => o.kind === 'star' || o.kind === 'gem';
+const pickup = o => o.kind === 'star' || o.kind === 'gem' || o.kind === 'nitro';
+let nitroK = 0, laserZap = 0;               // nitroK: 0 to 1, how much of the nitro boost is on right now
 /** @type {RunState} */
-const run = { warned: false, lastGap: 0, botT: 0, t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: START, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 0, spitT: 0, cancels: 0, gems: 0 };
+const run = { nitro: 0, nitroMax: 1, nextNitro: 0, warned: false, lastGap: 0, botT: 0, t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: START, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 0, spitT: 0, cancels: 0, gems: 0 };
 const progress = () => clamp(run.t / ROUND);
 const airborne = () => { const J = (STL - run.jumpT) / JD; return J > 0.14 && J < 0.9; };
 const scoreNow = () => Math.floor(run.dist / 100) + run.stars * 25 + run.bonus + (run.won ? 200 : 0);
@@ -674,7 +715,8 @@ function tell(event, extra) {
 function startRound() {
   if (state === 'go' || state === 'run') return;
   sound.unlock();
-  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: START, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: START, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 5 + Math.random() * 2, spitT: 6, cancels: 0, gems: 0, warned: false });
+  Object.assign(run, { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: START, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 1.2, nextLog: 2.4, wave: 0, lastRow: -9, lastGap: START, botT: 0, rnd: rng(SHOT ? 7 : (Date.now() & 0xffffff)), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 5 + Math.random() * 2, spitT: LEVELS[level].spitAt, cancels: 0, gems: 0, warned: false, nitro: 0, nitroMax: 1, nextNitro: 3 + Math.random() * 2 });
+  nitroK = 0;
   for (const o of obs) dropPic('b' + o.id);
   obs.length = 0; blasts.length = 0; spits.length = 0;
   setState('go');
@@ -684,6 +726,7 @@ function startRound() {
   pop(THREATS[threat].pop, { big: true, hue: threat === 'boulders' ? 'zap' : 'hot' });
   sound.go(); sound.music(true);
   const forced = params.get('armor');          // ?armor=bubble wears one armor all round, for testing
+  if (params.has('nitro')) { run.nitro = 1e9; run.nitroMax = 1e9; }          // ?nitro keeps the boost on all round, for testing
   if (ARMORS[forced]) run.armor = { kind: forced, t0: STL, until: 1e9, hits: ARMORS[forced].hits || 0 };
   tell('start', { level });
 }
@@ -696,7 +739,7 @@ function finish(won) {
   sound.music(false);
   for (const o of obs) o.leaving = true;
   for (const sp of spits) sp.dead = true;
-  run.armor = null;
+  run.armor = null; run.nitro = 0;
   const score = scoreNow(), key = 'packrun.best.' + threat + (level === 'hard' ? '.hard' : ''), best = +(store.get(key) || 0), isBest = score > best;
   if (isBest) store.set(key, String(score));
   tell('finish', { score, won, level });
@@ -714,7 +757,7 @@ function spawnWave() {
     const n = row ? LANES : Math.round((1 + (r() < lerp(0.3, 0.6, pg) ? 1 : 0) + (r() < lerp(0.1, 0.45, pg) + LEVELS[level].block * 0.3 ? 1 : 0)) * WIDE);
     const pick = row ? lanes : (r() < 0.75 ? near.concat(rest) : rest.concat(near)).slice(0, n), big = !row && r() < 0.25;   // mostly at the pack
     if (row) run.lastRow = run.t;
-    const v = T.v + r() * 80;
+    const v = (T.v + r() * 80) * LEVELS[level].v;
     for (const l of pick) obs.push(mkObs('boulder', l, F_SPAWN, { v, r: row ? 50 + r() * 6 : big ? 84 : 58 + r() * 10 }));
     const meet = F_SPAWN * packV / (packV + v);                    // where the boulders will be when they reach the pack
     if (r() < 0.6) for (let i = 0; i < 3; i++) obs.push(mkObs('star', pick[0], meet + (i - 1) * 140, { hg: [70, 165, 70][i] }));   // an arc of stars over a boulder
@@ -732,7 +775,7 @@ function spawnWave() {
   for (const l of blocked) {
     // a wide wave sends fewer animals down each lane, so the herd on screen stays about the same size
     const herd = T.kind === 'buffalo' ? (n <= 2 * WIDE ? 2 + (r() < pg ? 1 : 0) : 1 + (r() < 0.45 ? 1 : 0)) : 1 + (n <= 2 * WIDE && r() < pg * 0.45 ? 1 : 0);
-    for (let i = 0; i < herd; i++) obs.push(mkObs(T.kind, l, F_SPAWN + r() * 160 + i * (T.kind === 'buffalo' ? 210 + r() * 80 : 430), { v: T.v + r() * 60, size: T.kind === 'buffalo' ? 0.95 + r() * 0.15 : 0.96 + r() * 0.14, dz: (r() - 0.5) * (T.kind === 'buffalo' ? 70 : 30) }));
+    for (let i = 0; i < herd; i++) obs.push(mkObs(T.kind, l, F_SPAWN + r() * 160 + i * (T.kind === 'buffalo' ? 210 + r() * 80 : 430), { v: (T.v + r() * 60) * LEVELS[level].v, size: T.kind === 'buffalo' ? 0.95 + r() * 0.15 : 0.96 + r() * 0.14, dz: (r() - 0.5) * (T.kind === 'buffalo' ? 70 : 30) }));
   }
   const free = lanes.filter(l => !blocked.includes(l));
   const sl = free[Math.floor(r() * free.length)];
@@ -822,6 +865,18 @@ function grabGem(o) {
   pop(A.name.toUpperCase() + '!', { hue: 'zap', big: false });
   sound.gem(); updateHud(true);
 }
+function spawnNitro() {
+  const r = run.rnd, l = r() < 0.6 ? run.lastGap : Math.floor(r() * LANES);          // usually in the open lane, so it can be reached
+  const n = 1 + (r() < 0.4 ? 1 : 0);
+  for (let i = 0; i < n; i++) obs.push(mkObs('nitro', l, 4900 + i * 170, { hg: 60 }));
+}
+function grabNitro(o) {
+  o.hit = true; o.alpha = 0; run.bonus += 10;
+  run.nitro += NITRO_DIST; run.nitroMax = run.nitro;
+  puffs.push({ ring: true, stay: true, f: -110, y: -150, z: packZ, r0: 60, r1: 260, w: 9, c: '#ff8a1e', age: 0, life: 0.45 });
+  pop('NITRO!', { hue: 'hot', small: true });
+  flash = 0.25; sound.nitro(); updateHud(true);
+}
 function armorHit() {                       // the bubble takes a hit; after its last one it pops
   const a = run.armor;
   puffs.push({ ring: true, stay: true, f: -110, y: -150, z: packZ, r0: 200, r1: 120, w: 10, c: ARMORS[a.kind].c2, age: 0, life: 0.3 });
@@ -839,7 +894,7 @@ function enemyFire(dt) {
   if (run.t < run.spitT) return;
   const pg = progress(), lead = PACK[0].fx;
   // only animals charging down the pack's lane or one next to it, far enough off to give the player time
-  const can = obs.filter(o => SPIT[o.kind] && !o.leaving && !o.hit && Math.abs(o.lane - run.lane) <= 1 && o.f - lead > 1700 && o.f - lead < 4200);
+  const can = obs.filter(o => SPIT[o.kind] && !o.leaving && !o.hit && Math.abs(o.lane - run.lane) <= LEVELS[level].reach && o.f - lead > 1700 && o.f - lead < 4200);
   if (!can.length || run.rnd() > dt * lerp(1.2, 2.6, pg) * LEVELS[level].spit) return;
   const o = can[Math.floor(run.rnd() * can.length)], sp = SPIT[o.kind], [lo] = extent(o);
   spits.push({ kind: sp.kind, f: o.f + lo, fPrev: o.f + lo, y: sp.y, z: o.z, v: o.v + sp.v, seed: Math.random() * 9, dead: false });
@@ -872,12 +927,14 @@ function update(dt) {
   STL += dt;
   camStep();
   // speed
+  nitroK = lerp(nitroK, state === 'run' && run.nitro > 0 ? 1 : 0, 1 - Math.exp(-4 * dt));
+  if (state === 'run' && run.nitro > 0) run.nitro = Math.max(0, run.nitro - packV * dt);
   let target = 0;
   if (state === 'go') target = 1100 * smooth(clamp((STL - stateT) / 1.2));
-  else if (state === 'run') target = lerp(1100, 1560, progress()) * (1 - 0.45 * run.slow);
+  else if (state === 'run') target = lerp(1100, 1560, progress()) * LEVELS[level].speed * (1 + nitroK) * (1 - 0.45 * run.slow);
   packV = state === 'over' ? packV * Math.exp(-1.6 * dt) * (packV < 40 ? 0 : 1) : lerp(packV, target, 1 - Math.exp(-6 * dt));
   run.slow = Math.max(0, run.slow - dt * 0.9);
-  growTab(STL, packV);
+  growTab(STL, Math.min(packV, 1750));      // the cats' legs stop speeding up here: faster than this, the 30 pictures a second would only look like a blur
   SD += packV * dt;
   // lanes: the pack slides over; the others follow the leader a beat later
   const zT = laneZ(run.lane);
@@ -901,6 +958,9 @@ function update(dt) {
     if (run.jumpBuf > STL - 0.16 && (STL - run.jumpT) / JD > 0.88) jump();
     if (run.fireBuf > STL - 0.16 && STL - run.fireT >= BLAST_CD) fire();
     if (run.t < ROUND - 3 && run.t >= run.nextGem) { spawnGem(); run.nextGem = run.t + 7 + run.rnd() * 3; }
+    if (run.t < ROUND - 3 && run.t >= run.nextNitro) {                 // nitro cans are all over the trail, but never one while a boost is on
+      if (run.nitro > 0) run.nextNitro = run.t + 1; else { spawnNitro(); run.nextNitro = run.t + 3.2 + run.rnd() * 2.4; }
+    }
     enemyFire(dt);
     if (run.armor && STL > run.armor.until) { run.armor = null; updateHud(true); }
     if (run.armor && run.armor.kind === 'twin' && STL - run.fireT >= TWIN_EVERY) { run.fireT = STL - BLAST_CD; fire(); }   // it fires on its own
@@ -932,6 +992,20 @@ function update(dt) {
   }
   for (let i = blasts.length - 1; i >= 0; i--) if (blasts[i].dead) blasts.splice(i, 1);
   for (let i = spits.length - 1; i >= 0; i--) if (spits[i].dead) spits.splice(i, 1);
+  // laser armor: a beam down the leader's lane wipes out everything in it, and every ball it crosses
+  if (state === 'run' && run.armor && run.armor.kind === 'laser') {
+    const lz = PACK[0].z, lx = PACK[0].fx;
+    for (const o of obs) {
+      if (pickup(o) || o.hit || o.leaving || !o.hp) continue;
+      const [lo, hi, hw] = extent(o);
+      if (Math.abs(o.z - lz) < hw + 36 && o.f + hi > lx - 20 && o.f + lo < LASER_RANGE) clearIt(o);
+    }
+    for (const sp of spits) if (!sp.dead && Math.abs(sp.z - lz) < 110 && sp.f > lx && sp.f < LASER_RANGE) {
+      sp.dead = true; run.cancels++; run.bonus += 5;
+      puffs.push({ spark: true, f: sp.f, y: sp.y, z: sp.z, age: 0, life: 0.35, seed: sp.seed }); sound.cancel();
+    }
+    if (STL - laserZap > 0.16) { laserZap = STL; sound.zap(); }
+  }
   // threats move
   const air = airborne(), lead = PACK[0], zoneA = lead.fx - 60, zoneB = lead.fx + 90;
   const dustK = Math.min(1, 8 / Math.max(1, obs.filter(o => o.v > 0 && !pickup(o)).length));   // a big herd throws up thinner dust each, so the screen doesn't fill with it
@@ -946,7 +1020,7 @@ function update(dt) {
     if (state !== 'run' || o.hit || o.leaving) continue;
     const [lo, hi, hw] = extent(o), a = Math.min(o.f, o.fPrev) + lo, b = Math.max(o.f, o.fPrev) + hi;
     if (b < zoneA || a > zoneB) continue;
-    if (pickup(o)) { if (Math.abs(o.z - packZ) < hw && (o.hg < 100 || air)) (o.kind === 'gem' ? grabGem : collect)(o); continue; }
+    if (pickup(o)) { if (Math.abs(o.z - packZ) < hw && (o.hg < 100 || air)) (o.kind === 'gem' ? grabGem : o.kind === 'nitro' ? grabNitro : collect)(o); continue; }
     if (Math.abs(o.z - packZ) > hw + 62) continue;
     if ((o.kind === 'boulder' || o.kind === 'log') && air) continue;
     if (run.armor && run.armor.kind === 'rock') { clearIt(o, true); continue; }      // rock armor: the pack plows straight through
@@ -955,6 +1029,7 @@ function update(dt) {
     bump(o);
   }
   for (let i = obs.length - 1; i >= 0; i--) { const o = obs[i]; if (o.f < -CH_D * 0.9 || o.alpha <= 0) { obs.splice(i, 1); dropPic('b' + o.id); } }
+  if (nitroK > 0.2) for (const c of PACK) if (Math.random() < dt * 40 * nitroK) puffs.push({ f: c.fx - 150, y: -40 - Math.random() * 60, z: c.z + (Math.random() - 0.5) * 50, r: 22 + Math.random() * 26, a: 0.7, col: '255,140,40', age: 0, life: 0.3, vy: -10 });   // flames behind the pack
   // dust kicked back by the cats
   if (packV > 300) for (const c of PACK) if (Math.random() < dt * 7) puffs.push({ f: c.fx - 120, y: -8, z: c.z + (Math.random() - 0.5) * 60, r: 26 + Math.random() * 26, a: 0.35, age: 0, life: 0.7, vy: -10 });
   for (let i = puffs.length - 1; i >= 0; i--) {
@@ -967,7 +1042,7 @@ function update(dt) {
   for (const o of obs) if (o.kind === 'elephant' || o.kind === 'buffalo' || o.kind === 'boulder') near = Math.max(near, clamp(1 - Math.abs(o.f) / 1600) * clamp(1 - Math.abs(o.z - packZ) / 900));
   sound.rumble(state === 'run' ? near : 0);
   shake = Math.max(0, shake - dt * 2.4);
-  const amp = REDUCE ? 0 : (shake * 14 + near * 2.2) * DPR;
+  const amp = REDUCE ? 0 : (shake * 14 + near * 2.2 + nitroK * 1.6) * DPR;
   shakeX = amp * (Math.sin(STL * 47.1) + 0.6 * Math.sin(STL * 31.7 + 1.3)); shakeY = amp * (Math.sin(STL * 41.3 + 0.7) + 0.5 * Math.sin(STL * 27.1 + 2.1));
   flash = Math.max(0, flash - dt * 2.5);
   for (let i = JUMPS.length - 1; i >= 0; i--) if (JUMPS[i].t < STL - 3) JUMPS.splice(i, 1);
@@ -1012,7 +1087,7 @@ function bot() {                           // plays by itself with ?bot, for tes
     if (best.length) { steer(best[0] - run.lane); run.botT = STL + 0.2; }
     else { const open = ALL_LANES.filter(l => !blockedIn(l)).sort((a, b) => Math.abs(a - run.lane) - Math.abs(b - run.lane)); if (open.length) { steer(Math.sign(open[0] - run.lane)); run.botT = STL + 0.16; } }
   }
-  const gem = obs.find(o => o.kind === 'gem' && !o.hit && o.f - lead > 300 && o.f - lead < 2600);
+  const gem = obs.find(o => (o.kind === 'gem' || o.kind === 'nitro') && !o.hit && o.f - lead > 300 && o.f - lead < 2600);
   if (gem && STL > run.botT && gem.lane !== run.lane && !blockedIn(run.lane + Math.sign(gem.lane - run.lane))) { steer(Math.sign(gem.lane - run.lane)); run.botT = STL + 0.25; }
   if (spits.some(sp => Math.abs(sp.z - packZ) < 120 && sp.f - lead < 2600)) fire();
   if (obs.some(o => o.hp > 0 && !o.hit && !o.leaving && o.lane === run.lane && o.f - lead > 0 && o.f - lead < 3200)) fire();   // and roars at whatever is in its lane
@@ -1053,13 +1128,16 @@ addEventListener('keydown', e => {
 // ---- screens, scores and pops (plain HTML over the canvas, in the site's own lettering) ----
 const screens = { start: $('[data-screen="start"]'), end: $('[data-screen="end"]'), pause: $('[data-screen="pause"]') };
 function show(name) { for (const k in screens) screens[k].hidden = k !== name; }
-const hudEl = $('.game__hud'), armorEl = $('[data-armor]');
+const hudEl = $('.game__hud'), armorEl = $('[data-armor]'), nitroEl = $('[data-nitro]');
 function hud(on) { hudEl.hidden = !on; $('[data-pause]').hidden = !on; }
 let shown = {};
 function updateHud(force) {
   const score = scoreNow(), left = Math.max(0, Math.ceil(ROUND - run.t));
   if (force || shown.score !== score) { $('[data-score]').textContent = score; shown.score = score; }
   if (force || shown.left !== left) { $('[data-time]').textContent = `0:${String(left).padStart(2, '0')}`; shown.left = left; $('.game__time').classList.toggle('is-low', left <= 5 && state === 'run'); }
+  const nOn = run.nitro > 0;
+  if (force || shown.nitro !== nOn) { nitroEl.hidden = !nOn; shown.nitro = nOn; }
+  if (nOn) nitroEl.style.setProperty('--left', clamp(run.nitro / run.nitroMax).toFixed(3));
   const ak = run.armor ? run.armor.kind : '';
   if (force || shown.armor !== ak) {
     armorEl.hidden = !ak; shown.armor = ak;
@@ -1223,6 +1301,8 @@ const sound = (() => {
       hiss(0.22, 0.14, 'bandpass', 1500, 600, 1.2);
     },
     gem() { if (!live()) return; const t = ac.currentTime; [76, 80, 83, 88, 92].forEach((m, i) => tone(mtof(m), mtof(m), 0.16, 'triangle', 0.14, t + i * 0.05)); hiss(0.4, 0.06, 'highpass', 8000, 6000, 0.7); },
+    nitro() { if (!live()) return; const t = ac.currentTime; hiss(0.6, 0.3, 'bandpass', 300, 3800, 1.4, t); tone(120, 520, 0.5, 'sawtooth', 0.12, t); tone(260, 1040, 0.4, 'triangle', 0.08, t + 0.1); },
+    zap() { if (live()) { tone(80, 70, 0.2, 'sawtooth', 0.07); hiss(0.14, 0.06, 'highpass', 4000, 6000, 0.8); } },
     pew() { if (live()) { tone(1100, 520, 0.07, 'square', 0.035); hiss(0.05, 0.05, 'bandpass', 3000, 1800, 1.5); } },
     block() { if (live()) { tone(900, 1300, 0.1, 'sine', 0.16); tone(1300, 700, 0.18, 'triangle', 0.1, ac.currentTime + 0.05); } },
     cancel() { if (live()) { hiss(0.16, 0.22, 'bandpass', 2500, 900, 1.2); tone(700, 300, 0.12, 'square', 0.05); } },
@@ -1249,7 +1329,7 @@ const sound = (() => {
 let last = 0, raf = 0, visible = true, fpsT = 0, fpsN = 0, slowFor = 0, workSum = 0;
 // numbers for testing: frames per second, milliseconds of script per frame, cat pictures per second per cat
 const stats = /** @type {any} */ (window).__packRun = { fps: 0, work: 0, catFps: 0, quality: 0, painter: crew.length ? 'workers' : 'page' };
-Object.defineProperties(stats, { lane: { get: () => run.lane, enumerable: true }, blasts: { get: () => blasts.length, enumerable: true }, level: { get: () => level, enumerable: true }, roarAgo: { get: () => +(STL - run.fireT).toFixed(2), enumerable: true }, armor: { get: () => run.armor && run.armor.kind, enumerable: true }, gems: { get: () => run.gems, enumerable: true }, spits: { get: () => spits.length, enumerable: true }, cancels: { get: () => run.cancels, enumerable: true }, spooked: { get: () => run.spooked, enumerable: true }, score: { get: scoreNow, enumerable: true }, paws: { get: () => run.paws, enumerable: true }, air: { get: airborne, enumerable: true }, state: { get: () => paused ? 'paused' : state, enumerable: true } });
+Object.defineProperties(stats, { lane: { get: () => run.lane, enumerable: true }, blasts: { get: () => blasts.length, enumerable: true }, nitro: { get: () => Math.round(run.nitro), enumerable: true }, level: { get: () => level, enumerable: true }, roarAgo: { get: () => +(STL - run.fireT).toFixed(2), enumerable: true }, armor: { get: () => run.armor && run.armor.kind, enumerable: true }, gems: { get: () => run.gems, enumerable: true }, spits: { get: () => spits.length, enumerable: true }, cancels: { get: () => run.cancels, enumerable: true }, spooked: { get: () => run.spooked, enumerable: true }, score: { get: scoreNow, enumerable: true }, paws: { get: () => run.paws, enumerable: true }, air: { get: airborne, enumerable: true }, state: { get: () => paused ? 'paused' : state, enumerable: true } });
 function frame(ts) {
   raf = requestAnimationFrame(frame);
   const raw = (ts - last) / 1000, dt = clamp(raw, 0, 0.05); last = ts;

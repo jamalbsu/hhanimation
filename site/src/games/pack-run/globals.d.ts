@@ -21,6 +21,7 @@ interface RunState {
   jumpT: number; jumpBuf: number; fireT: number; fireBuf: number;
   next: number; nextLog: number; wave: number; lastRow: number; lastGap: number; botT: number;
   rnd: () => number; hinted: boolean; combo: number; won: boolean; slow: number;
+  nitro: number; nitroMax: number; nextNitro: number;
   bonus: number; spooked: number; popT: number; nextGem: number; spitT: number; cancels: number; gems: number; warned: boolean;
   armor: null | { kind: string; t0: number; until: number; hits: number };
 }
