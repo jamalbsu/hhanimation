@@ -370,6 +370,9 @@ h3 { font-size: 1.55rem; line-height: 1.04; }
 .game__keys .for-touch, .is-touch .game__keys .for-keys { display: none; }
 .is-touch .game__keys .for-touch { display: inline; }
 .game__pick { margin: 0; padding: 0; border: 0; }
+.game__pick--level { margin-top: 10px; }
+.game__pick--level legend { font-size: .85rem; margin-bottom: 6px; }
+.game__pick--level input[value="hard"]:checked + span { background: var(--hot); color: #fff; }
 .game__pick legend { margin-bottom: 8px; padding: 0; font-size: .95rem; font-weight: 700; }
 .game__pick-row { display: flex; flex-wrap: wrap; gap: 8px 10px; }
 .game__card--end .game__pick-row { justify-content: center; }

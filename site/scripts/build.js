@@ -111,7 +111,7 @@ function card(ep, { play = false, meta = false } = {}) {
 // (../panther/panther-rig.js, the same file every episode builder uses) and the elephants and buffalo of the
 // episode engine (the "hoofed animals" section of the trailer episode).
 const GAME = {
-  path: '/games/pack-run/', name: 'Pack Run', published: '2026-11-14', updated: '2026-11-15',   // bump "updated" when the game changes
+  path: '/games/pack-run/', name: 'Pack Run', published: '2026-11-14', updated: '2026-11-16',   // bump "updated" when the game changes
   shot: 'src/games/pack-run/shot.png', image: '/games/pack-run/share.jpg', card: '/games/pack-run/card.webp',
   // each threat, with the episode it comes from
   threats: [['elephants', 'Elephants', 'Head-On Elephant Herd'], ['buffalo', 'Buffalo', 'Buffalo Stampede'], ['boulders', 'Boulders', 'Rockslide']],
@@ -361,6 +361,10 @@ const VIDEO_GAME_LD = {
   const picker = name => `          <fieldset class="game__pick">
             <legend>Pick the threat</legend>
             <div class="game__pick-row">${threatEps.map(({ key, label }, i) => `<label><input type="radio" name="${name}" value="${key}" data-threat${i ? '' : ' checked'}><span>${esc(label)}</span></label>`).join('')}</div>
+          </fieldset>
+          <fieldset class="game__pick game__pick--level">
+            <legend>Level</legend>
+            <div class="game__pick-row"><label><input type="radio" name="${name}-level" value="easy" data-level checked><span>Easy</span></label><label><input type="radio" name="${name}-level" value="hard" data-level><span>Hard</span></label></div>
           </fieldset>`;
   const vars = {
     series: esc(SERIES), subscribeUrl, episodeCount: shown.length,

@@ -55,7 +55,9 @@ The pack runs down a five-lane savanna trail while one huge threat charges strai
 
 **They shoot back.** Elephants within a lane of the pack squirt water balls, buffalo fling mud balls, more often as the round goes on. A roar and a ball that meet in a lane cancel each other (+5). Jumping clears a ball; one that hits costs a paw.
 
-**Diamonds and armor.** Every 7 to 10 seconds a diamond appears in an open lane. Picking it up puts on one of four armors (`ARMORS` in `game.js`), shown as a shell around the pack and a chip with a timer in the corner: Bubble Armor (blue, 10 s, takes three bumps or balls), Rock Armor (orange, 7 s, the pack smashes through whatever it runs into, for points), Triple Roar (pink, 8 s, each roar goes down three lanes) and Mirror Armor (green, 9 s, balls bounce back as roars). Each shell is painted once and then only placed, to keep 60 fps.
+**Diamonds and armor.** Every 7 to 10 seconds a diamond appears in an open lane. Picking it up puts on one of four armors (`ARMORS` in `game.js`), shown as a shell around the pack and a chip with a timer in the corner: Bubble Armor (blue, 10 s, takes three bumps or balls), Rock Armor (orange, 7 s, the pack smashes through whatever it runs into, for points), Triple Roar (pink, 8 s, each roar goes down three lanes) Mirror Armor (green, 9 s, balls bounce back as roars) and Twin Stream (purple, 7 s, two lines of small roars fire on their own down the pack's lane). Which one a diamond gives is random (never the one the pack is already wearing).
+
+**Levels.** The start and end screens have Easy and Hard (`LEVELS` in `game.js`). Hard spawns waves about twice as often, closes up to one more lane per wave and doubles how often the herds shoot. Best scores are kept per threat and level. Each shell is painted once and then only placed, to keep 60 fps.
 
  Stars are 25 points each, plus a point per meter run, and finishing the round adds 200. Three bumps end the round early. P or Esc pauses, M turns the sound on or off. Sound starts off.
 
@@ -72,7 +74,7 @@ The pack runs down a five-lane savanna trail while one huge threat charges strai
 
 **Admin page.** https://happyhillz.com/secret-crm-door/ shows players (all time, today, 7 and 30 days), rounds, wins, best score, the last 14 days and the split by threat. It's password protected: wrong passwords are limited to 5 per 15 minutes, and it is kept out of search engines. Set or change the password with `npm run admin-password`, run in a terminal on a computer with the site's SSH key. It sends the password to the server's PHP over SSH, and only a hash is stored, in `.hh-data/admin.json`. The password is never in git.
 
-**Test switches** (add to the address): `?bot` plays a round by itself, dodging and roaring; `?threat=buffalo` (or `elephants`, `boulders`) picks the threat; `?armor=bubble` (or `rock`, `triple`, `mirror`) wears that armor all round; `?cats=page` turns the workers off; `?shot` draws the still used for the share image. `window.__packRun` shows the frame rate, how often each cat is repainted, and the game state.
+**Test switches** (add to the address): `?bot` plays a round by itself, dodging and roaring; `?threat=buffalo` (or `elephants`, `boulders`) picks the threat; `?armor=bubble` (or `rock`, `triple`, `mirror`, `twin`) wears that armor all round; `?level=hard` picks the level; `?cats=page` turns the workers off; `?shot` draws the still used for the share image. `window.__packRun` shows the frame rate, how often each cat is repainted, and the game state.
 
 ## Automatic deploys
 
