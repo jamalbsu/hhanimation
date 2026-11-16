@@ -154,6 +154,9 @@ function shape(p, measured) {
   const groupOf = v => (colorAt >= 0 ? v.options[colorAt] : 0);
   const groups = colorAt >= 0 ? options[colorAt].values.map(x => x.id) : [0];
   // the mockups chosen for publishing, a few per color, default picture first
+  // Printify keeps a mockup's address when the design changes, so the design (file, place, size, angle) is part of each
+  // picture's name: a new design means new names, and the sync downloads the new mockups instead of keeping the old ones.
+  const design = JSON.stringify((p.print_areas || []).map(a => (a.placeholders || []).map(ph => [ph.position, (ph.images || []).map(im => [im.id, im.x, im.y, im.scale, im.angle])])));
   const per = shopCfg.imagesPerColor || 4, seen = new Set(), images = [];
   const pics = (p.images || []).filter(i => i.is_selected_for_publishing !== false).sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
   for (const g of groups) {
@@ -164,7 +167,7 @@ function shape(p, measured) {
       n++;
       if (seen.has(i.src)) { images.find(x => x.src === i.src).groups.push(g); continue; }
       seen.add(i.src);
-      images.push({ src: i.src, file: crypto.createHash('sha1').update(i.src).digest('hex').slice(0, 12), position: i.position || '', groups: [g] });
+      images.push({ src: i.src, file: crypto.createHash('sha1').update(i.src + design).digest('hex').slice(0, 12), position: i.position || '', groups: [g] });
     }
   }
   const def = variants.find(v => (p.variants || []).find(x => x.id === v.id)?.is_default && v.available) || variants.find(v => v.available) || variants[0];

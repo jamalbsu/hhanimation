@@ -501,6 +501,44 @@ h3 { font-size: 1.55rem; line-height: 1.04; }
 .thanks__in { display: grid; justify-items: center; gap: 18px; max-width: 760px; text-align: center; padding-block: clamp(20px, 6vw, 60px); }
 .burst--thanks { --burst-w: 250px; --burst-size: 2.2rem; --burst-fill: var(--zap); transform: rotate(-4deg); }
 
+/* ---------- phones ---------- */
+/* The sun behind the phone is wider than a small screen; clip it instead of letting the page scroll sideways. */
+.hero { overflow-x: clip; }
+@media (max-width: 560px) {
+  /* the menu stays: Episodes, Games and Shop fit beside a smaller wordmark; Subscribe is in the hero right below */
+  .bar__in { gap: 10px; }
+  .wordmark { font-size: 1.28rem; }
+  .bar__nav { gap: clamp(10px, 3.6vw, 18px); }
+  .bar__link { display: block; padding: 14px 0; font-size: clamp(.86rem, 3.9vw, 1rem); letter-spacing: .03em; }
+  .bar__link[href="/#about"], .bar .btn { display: none; }
+
+  .hero__in { padding-top: 26px; }
+  .hero .actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 1.2em; }
+  .hero .actions .btn { width: 100%; }
+  .phone { width: min(62vw, 250px); }
+  .burst--new { left: calc(50% + min(31vw, 125px) - 76px); --burst-w: 118px; --burst-size: 1rem; }
+  .phone figcaption { font-size: .92rem; }
+
+  .head p { font-size: 1.08rem; }
+  .more .btn { width: 100%; }
+
+  /* the three panels: picture beside the words, a third of the height */
+  .strip { gap: 16px; }
+  .panel { flex-direction: row; }
+  .panel__art { flex: 0 0 36%; min-height: 0; border-bottom: 0; border-right: var(--line) solid var(--ink); }
+  .panel__art .burst { --burst-w: 112px; --burst-size: 1.25rem; }
+  .panel__copy { padding: 14px 14px 16px; }
+  .panel__copy h3 { font-size: 1.15rem; }
+  .panel__copy p { font-size: 1rem; line-height: 1.45; }
+
+  .join { padding-block: 72px; }
+  .join .btn { width: 100%; }
+
+  /* footer links big enough to tap */
+  .foot__in p:last-child { line-height: 2.4; }
+  .foot a { display: inline-block; padding-block: 4px; }
+}
+
 /* ---------- motion ---------- */
 @media (prefers-reduced-motion: no-preference) {
   .lockup__a { animation: slam-l .5s cubic-bezier(.2, 1.3, .4, 1) both; }
