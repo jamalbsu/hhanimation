@@ -226,5 +226,33 @@ async function pictures(prod) {
     console.log(`  ${p.title}: /shop/${p.slug}/, ${p.variants.length} variants, $${(Math.min(...prices) / 100).toFixed(2)}–$${(Math.max(...prices) / 100).toFixed(2)}, ${p.images.length} pictures`);
   }
   if (!products.length) console.log('  no products with enabled variants and mockups');
+
+  // Pressing Publish in Printify locks a product until the shop confirms it (else Printify gives up after an hour
+  // and shows it unpublished). Confirm each locked product, with its page here as the link.
+  const locked = products.filter(p => r.products.find(x => x.id === p.id)?.is_locked);
+  if (locked.length) {
+    const jobs = locked.map(p => ({ id: p.id, url: `${cfg.siteUrl}/shop/${p.slug}/` }));
+    const out = await new Promise((resolve, reject) => {
+      const php = `<?php
+$k = json_decode((string)@file_get_contents(getenv('HOME') . '/${DOC}/.hh-data/shop.json'), true) ?: [];
+foreach (json_decode(base64_decode('${Buffer.from(JSON.stringify(jobs)).toString('base64')}'), true) as $j) {
+  $ch = curl_init('https://api.printify.com/v1/shops/${r.shop.id}/products/' . $j['id'] . '/publishing_succeeded.json');
+  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => json_encode(['external' => ['id' => $j['id'], 'handle' => $j['url']]]),
+    CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $k['printify_token'], 'User-Agent: PHP-shop/1.0', 'Content-Type: application/json']]);
+  $raw = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+  echo $j['id'], ' ', $code, ' ', $code === 200 ? '' : substr((string)$raw, 0, 200), "\\n";
+}
+`;
+      const child = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', ...(PORT ? ['-p', PORT] : []), TARGET, 'php'], { stdio: ['pipe', 'pipe', 'inherit'] });
+      let buf = ''; child.stdout.on('data', d => { buf += d; }); child.on('error', reject);
+      child.on('close', code => (code === 0 ? resolve(buf) : reject(new Error(`ssh exit ${code}`))));
+      child.stdin.end(php);
+    });
+    for (const line of out.trim().split('\n')) {
+      const [id, code, ...rest] = line.split(' '), p = locked.find(x => x.id === id);
+      console.log(code === '200' ? `  told Printify "${p.title}" is published at /shop/${p.slug}/` : `  Printify refused the publish confirmation for "${p?.title || id}" (HTTP ${code}) ${rest.join(' ')}`);
+    }
+  }
   console.log('wrote data/shop.json; now run "npm run build"');
 })().catch(err => { console.error(err.message || err); process.exit(1); });
