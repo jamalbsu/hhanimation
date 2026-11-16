@@ -30,4 +30,40 @@ function pickFeatured(cfg, episodes) {
 
 const findEpisode = (episodes, title) => episodes.find(e => key(e.title) === key(title));
 
-module.exports = { ROOT, at, readJson, config, key, slug, visibleEpisodes, pickFeatured, findEpisode };
+// Reads one line typed or pasted in the terminal without showing any of it, for passwords and API keys.
+// The terminal is switched to raw mode, so it echoes nothing, not even when a long paste wraps the line.
+// (readline's "hide the output" trick redraws the whole line once it wraps, which prints the secret.)
+// Backspace deletes, Enter finishes, Ctrl-C cancels.
+function cleanSecret(raw) {
+  const s = raw.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b./g, '');   // arrow keys, paste markers
+  let out = '';
+  for (const c of s) { if (c === '\x7f' || c === '\b') out = out.slice(0, -1); else if (c >= ' ') out += c; }
+  return out.trim();
+}
+function askHidden(question) {
+  return new Promise((resolve, reject) => {
+    const stdin = process.stdin;
+    if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') return reject(new Error('run this in a terminal, so it can be typed in privately'));
+    let raw = '';
+    const finish = err => {
+      stdin.removeListener('data', onData);
+      stdin.setRawMode(false);
+      stdin.pause();
+      process.stdout.write('\n');
+      if (err) reject(err); else resolve(cleanSecret(raw));
+    };
+    const onData = chunk => {
+      for (const c of chunk.toString('utf8')) {
+        if (c === '\u0003' || c === '\u0004') return finish(new Error('cancelled; nothing was changed'));
+        if (c === '\r' || c === '\n') return finish();
+        raw += c;
+      }
+    };
+    process.stdout.write(question);
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on('data', onData);
+  });
+}
+
+module.exports = { ROOT, at, readJson, config, key, slug, visibleEpisodes, pickFeatured, findEpisode, askHidden, cleanSecret };

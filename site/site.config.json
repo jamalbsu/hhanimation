@@ -29,5 +29,16 @@
     "google": "",
     "bing": ""
   },
-  "forceHttps": true
+  "forceHttps": true,
+  "shop": {
+    "public": false,
+    "contactEmail": "",
+    "printifyShopId": null,
+    "countries": ["US"],
+    "deliveryDays": [5, 12],
+    "maxQty": 5,
+    "collectTax": false,
+    "imagesPerColor": 4,
+    "hideProducts": []
+  }
 }

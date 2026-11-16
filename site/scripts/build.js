@@ -1,7 +1,9 @@
-// Builds the static site into dist/. No server-side code: HostGator serves the folder as is.
+// Builds the site into dist/. HostGator serves the folder as is; the only server code is the PHP in /api/
+// (the game's play counter and the shop's checkout) and the admin page.
 //   npm run build
 // Pages: / (landing), /episodes/ (all episodes), /episodes/<slug>/ (one per episode),
-// /games/ (all games), /games/pack-run/ (the Pack Run game), 404.html.
+// /games/ (all games), /games/pack-run/ (the Pack Run game),
+// /shop/ (merch), /shop/<product>/ (one per product), /shop/thanks/ (after paying), 404.html.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -138,6 +140,39 @@ function gameScript() {
 const gameJs = gameScript();
 const gv = crypto.createHash('sha1').update(gameJs).digest('hex').slice(0, 8);
 
+// ---- shop ---------------------------------------------------------------------------
+// Products come from Printify ("npm run shop-sync" writes data/shop.json and the pictures in src/shop/).
+// Payment is Stripe's embedded checkout; the PHP in src/server/ starts it and turns paid orders into Printify orders.
+// The menu links the shop whenever it has products. Until "shop.public" is true it stays out of search:
+// no homepage section, not in the sitemap, noindex.
+const SHOP = { countries: ['US'], deliveryDays: [5, 12], maxQty: 5, ...(cfg.shop || {}) };
+const shopFile = process.env.HH_SHOP_DATA || at('data/shop.json');   // the env variables are for trying the pages with sample data
+const shopImg = process.env.HH_SHOP_IMG || at('src/shop');
+const shopData = fs.existsSync(shopFile) ? JSON.parse(fs.readFileSync(shopFile, 'utf8')) : { products: [] };
+const products = shopData.products || [];
+const shopOn = products.length > 0;
+const shopPublic = shopOn && SHOP.public === true;
+if (shopPublic && !SHOP.contactEmail) throw new Error('set shop.contactEmail in site.config.json before making the shop public (the returns policy needs it)');
+const money = c => `$${(c / 100).toFixed(2)}`;
+const productPath = p => `/shop/${p.slug}/`;
+const picture = (p, img, ext = 'webp') => `/shop/${p.slug}/${img.file}.${ext}`;
+const groupOf = (p, v) => (p.colorOption >= 0 ? v.options[p.colorOption] : 0);
+const firstPicture = (p, group) => p.images.find(i => i.groups.includes(group)) || p.images[0];
+// color is picked first, then the rest (sizes), whatever order Printify lists them in
+const optionOrder = p => (p.colorOption >= 0 ? [p.colorOption] : []).concat(p.options.map((_, i) => i).filter(i => i !== p.colorOption));
+const optionLabel = o => (o.type === 'color' ? 'Color' : o.type === 'size' ? 'Size' : o.name);
+const textOf = p => p.blocks.flatMap(b => (b.p ? [b.p] : b.ul));
+const descHtml = p => p.blocks.map(b => b.p ? `          <p>${esc(b.p)}</p>`
+  : `          ${b.h ? `<h2 class="product__h">${esc(b.h)}</h2>` : ''}<ul>${b.ul.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`).join('\n');
+for (const p of products) {
+  for (const img of p.images) for (const ext of ['webp', 'jpg']) {
+    if (!fs.existsSync(path.join(shopImg, p.slug, `${img.file}.${ext}`))) throw new Error(`missing src/shop/${p.slug}/${img.file}.${ext}; run "npm run shop-sync"`);
+  }
+  if (!p.variants.some(v => v.id === p.defaultVariant)) p.defaultVariant = p.variants[0].id;
+}
+const shopJs = read('src/shop.js');
+const sv = crypto.createHash('sha1').update(shopJs).digest('hex').slice(0, 8);
+
 // ---- structured data ---------------------------------------------------------
 const ORG = { '@type': 'Organization', '@id': `${SITE}/#org`, name: cfg.brand, url: `${SITE}/`, logo: { '@type': 'ImageObject', url: abs('/logo.png'), width: 512, height: 512 }, sameAs: [channelUrl] };
 const SERIES_LD = { '@type': 'CreativeWorkSeries', '@id': `${SITE}/#series`, name: SERIES, url: `${SITE}/`, genre: ['Animation', 'Cartoon', 'Adventure'], inLanguage: 'en', creator: { '@id': `${SITE}/#org` }, sameAs: [channelUrl] };
@@ -166,7 +201,8 @@ const header = current => `<header class="bar">
     <a class="wordmark" href="/" aria-label="${esc(cfg.brand)}, home">${esc(cfg.brand)}</a>
     <nav class="bar__nav" aria-label="Main">
       <a class="bar__link" href="/episodes/"${current === 'episodes' ? ' aria-current="page"' : ''}>Episodes</a>
-      <a class="bar__link" href="/games/"${current === 'games' ? ' aria-current="page"' : ''}>Games</a>
+      <a class="bar__link" href="/games/"${current === 'games' ? ' aria-current="page"' : ''}>Games</a>${shopOn ? `
+      <a class="bar__link" href="/shop/"${current === 'shop' ? ' aria-current="page"' : ''}>Shop</a>` : ''}
       <a class="bar__link" href="/#about">About</a>
       <a class="btn btn--pop btn--sm" href="${subscribeUrl}" target="_blank" rel="noopener">Subscribe</a>
     </nav>
@@ -176,7 +212,7 @@ const header = current => `<header class="bar">
 const footer = `<footer class="foot">
   <div class="wrap foot__in">
     <p><span class="wordmark wordmark--sm">${esc(cfg.brand)}</span> Original animated adventures, one short episode at a time.</p>
-    <p><a href="/episodes/">All episodes</a> · <a href="/games/">Games</a> · <a href="${channelUrl}" target="_blank" rel="noopener">YouTube: ${esc(cfg.channel.handle)}</a> · © ${year} ${esc(cfg.brand)}</p>
+    <p><a href="/episodes/">All episodes</a> · <a href="/games/">Games</a> · ${shopOn ? '<a href="/shop/">Shop</a> · ' : ''}<a href="${channelUrl}" target="_blank" rel="noopener">YouTube: ${esc(cfg.channel.handle)}</a> · © ${year} ${esc(cfg.brand)}</p>
   </div>
 </footer>`;
 
@@ -248,6 +284,7 @@ const pages = [];   // for the sitemap
     heroHref: pageOf(hero), heroData: playData(hero, cfg.trailer.label), heroThumb: hero.shortId, trailerLabel: esc(cfg.trailer.label),
     burstNew: burst(3), burstA: burst(11), burstB: burst(29, 15), burstC: burst(47, 12), iconPlay: ICON_PLAY,
     gameHref: GAME.path, gameCard: GAME.card, gamePitch: esc(GAME.pitch), burstGame: burst(61, 12),
+    shopTeaser: shopPublic ? shopTeaser() : '',
   };
   const body = fill(read('src/home.html'), vars, 'home.html');
   const description = `${SERIES} is a family-friendly animated cartoon about young panthers, a leopard and a jaguar on the run. Short adventure videos, new every week.`;
@@ -421,6 +458,185 @@ const VIDEO_GAME_LD = {
   pages.push({ loc: '/games/', lastmod: GAME.updated }, { loc: GAME.path, lastmod: GAME.updated });
 }
 
+// Shop: the list, one page per product, the thank-you page, and the catalog the checkout PHP trusts
+function shopTeaser() {
+  const p = products[0], img = firstPicture(p, groupOf(p, p.variants.find(v => v.id === p.defaultVariant)));
+  return `<section class="section shop-teaser" id="merch">
+  <div class="wrap">
+    <a class="teaser teaser--shop" href="${products.length > 1 ? '/shop/' : productPath(p)}">
+      <span class="teaser__art"><img src="${picture(p, img)}" alt="${esc(p.title)}" width="1000" height="1000" loading="lazy" decoding="async"></span>
+      <span class="teaser__copy">
+        <span class="chip chip--pop">Official merch</span>
+        <h2 class="teaser__title">Wear the pack</h2>
+        <span class="teaser__text">${esc(p.title)}, from ${money(Math.min(...p.variants.map(v => v.price)))}. Printed when you order it and shipped to you${SHOP.countries.length === 1 && SHOP.countries[0] === 'US' ? ' in the US' : ''}.</span>
+        <span class="btn btn--pop">Shop now</span>
+      </span>
+    </a>
+  </div>
+</section>
+`;
+}
+if (shopOn) {
+  const robots = shopPublic ? {} : { noindex: true };
+  const [dMin, dMax] = SHOP.deliveryDays;
+  const where = SHOP.countries.length === 1 && SHOP.countries[0] === 'US' ? 'US addresses only' : `ships to ${SHOP.countries.join(', ')}`;
+  const contact = SHOP.contactEmail ? `<a href="mailto:${esc(SHOP.contactEmail)}">${esc(SHOP.contactEmail)}</a>` : 'us';
+  const policy = `<details class="product__policy">
+          <summary>Shipping and returns</summary>
+          <p><strong>Shipping:</strong> ${where}. Each item is printed when you order it, and most orders arrive in ${dMin}–${dMax} business days. You get an email with tracking when it ships.</p>
+          <p><strong>Returns:</strong> because every item is made for you, we can't take returns for a different size or a change of mind. If it arrives damaged or misprinted, email ${contact} within 30 days with a photo and we'll replace it for free.</p>
+        </details>`;
+  const fromPrice = p => Math.min(...p.variants.map(v => v.price));
+  const colorsOf = p => (p.colorOption >= 0 ? p.options[p.colorOption].values.length : 0);
+
+  // the list
+  const body = `<section class="section listing shop">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li aria-current="page">Shop</li></ol></nav>
+    <div class="head">
+      <h1 class="page-title">${esc(SERIES)} merch</h1>
+      <p>Official ${esc(cfg.brand)} merch from the ${esc(SERIES)} cartoon. Every item is printed when you order it and shipped to you (${where}).</p>
+    </div>
+    <ul class="products" role="list">
+${products.map(p => { const img = firstPicture(p, groupOf(p, p.variants.find(v => v.id === p.defaultVariant))); return `      <li><a class="product-card" href="${productPath(p)}">
+        <span class="product-card__art"><img src="${picture(p, img)}" alt="${esc(p.title)}" width="1000" height="1000" decoding="async"></span>
+        <span class="product-card__body">
+          <span class="product-card__title">${esc(p.title)}</span>
+          <span class="product-card__meta">From ${money(fromPrice(p))}${colorsOf(p) > 1 ? ` · ${colorsOf(p)} colors` : ''}</span>
+          <span class="btn btn--pop btn--sm">Choose your size</span>
+        </span>
+      </a></li>`; }).join('\n')}
+    </ul>
+  </div>
+</section>`;
+  write('shop/index.html', page({
+    path: '/shop/', current: 'shop', body, ...robots, image: `/shop/${products[0].slug}/share.jpg`,
+    title: `${SERIES} Merch: T-Shirts and More | ${cfg.brand}`,
+    description: summary(`Official ${SERIES} merch from ${cfg.brand}: ${products.map(p => p.title).join(', ')}. Printed when you order and shipped to you.`),
+    head: `<script src="/shop.js?v=${sv}" defer></script>\n`,
+    ld: [
+      { '@type': 'CollectionPage', '@id': `${abs('/shop/')}#page`, url: abs('/shop/'), name: `${SERIES} merch`, isPartOf: { '@id': `${SITE}/#website` },
+        mainEntity: { '@type': 'ItemList', numberOfItems: products.length, itemListElement: products.map((p, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(productPath(p)), name: p.title })) } },
+      crumbs([['Home', '/'], ['Shop', '/shop/']]),
+    ],
+  }));
+  if (shopPublic) pages.push({ loc: '/shop/', lastmod: day(shopData.synced) });
+
+  // one page per product
+  for (const p of products) {
+    const def = p.variants.find(v => v.id === p.defaultVariant);
+    const defGroup = groupOf(p, def);
+    const main = firstPicture(p, defGroup);
+    const optionHtml = optionOrder(p).map(oi => {
+      const o = p.options[oi], isColor = o.type === 'color';
+      if (o.values.length === 1) {   // nothing to choose: say what it is
+        return `          <p class="opt opt--fixed"><input type="radio" name="opt${oi}" value="${o.values[0].id}" data-opt="${oi}" checked hidden>${esc(optionLabel(o))}: <strong>${esc(o.values[0].title)}</strong></p>`;
+      }
+      return `          <fieldset class="opt${isColor ? ' opt--color' : ''}">
+            <legend>${esc(optionLabel(o))}${isColor ? `: <strong data-opt-name="${oi}">${esc(o.values.find(x => x.id === def.options[oi])?.title || '')}</strong>` : ''}</legend>
+            <div class="opt__row">${o.values.map(x => `<label class="${isColor ? 'swatch' : 'pill'}"><input type="radio" name="opt${oi}" value="${x.id}" data-opt="${oi}"${x.id === def.options[oi] ? ' checked' : ''}>${isColor
+              ? `<span class="swatch__dot" style="--c:${esc(x.hex || '#ccc')}"></span><span class="visually-hidden">${esc(x.title)}</span>`
+              : `<span>${esc(x.title)}</span>`}</label>`).join('')}</div>
+          </fieldset>`;
+    }).join('\n');
+    const data = {
+      id: p.id, title: p.title, colorOption: p.colorOption, order: optionOrder(p), maxQty: SHOP.maxQty,
+      options: p.options.map(o => ({ name: o.name, values: o.values.map(x => ({ id: x.id, title: x.title })) })),
+      variants: p.variants.map(v => ({ id: v.id, title: v.title, price: v.price, options: v.options, available: v.available, ship: v.ship })),
+      images: p.images.map(i => ({ src: picture(p, i), groups: i.groups, position: i.position })),
+    };
+    const prices = p.variants.map(v => v.price);
+    const description = summary([`${p.title}: official ${SERIES} merch from ${cfg.brand}.`, ...textOf(p)].join(' '));
+    const body = `<article class="section product">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/shop/">Shop</a></li><li aria-current="page">${esc(p.title)}</li></ol></nav>
+    <div class="product__grid">
+      <div class="product__gallery">
+        <div class="product__main"><img src="${picture(p, main)}" alt="${esc(p.title)}" width="1000" height="1000" fetchpriority="high" data-main></div>
+        <ul class="product__thumbs" role="list">
+${p.images.map((img, i) => `          <li${img.groups.includes(defGroup) ? '' : ' hidden'} data-groups="${img.groups.join(' ')}"><button class="product__thumb" type="button" data-src="${picture(p, img)}" aria-label="Show picture ${i + 1}"${img === main ? ' aria-current="true"' : ''}><img src="${picture(p, img)}" alt="" width="1000" height="1000" loading="lazy" decoding="async"></button></li>`).join('\n')}
+        </ul>
+      </div>
+      <form class="product__info" data-product>
+        <p class="chips"><span class="chip chip--ink">${esc(cfg.brand)}</span><span class="chip chip--pop">Official merch</span></p>
+        <h1 class="page-title">${esc(p.title)}</h1>
+        <p class="product__price"><span data-price>${money(def.price)}</span> <span class="product__ship" data-ship>+ ${money(def.ship[0])} shipping</span></p>
+${optionHtml}
+        <div class="product__buyrow">
+          <label class="qty"><span>Qty</span><select name="qty" data-qty>${Array.from({ length: SHOP.maxQty }, (_, i) => `<option${i ? '' : ' selected'}>${i + 1}</option>`).join('')}</select></label>
+          <button class="btn btn--pop btn--lg product__buy" type="submit" data-buy>Buy now</button>
+        </div>
+        <p class="product__status" role="status" aria-live="polite" data-status></p>
+        <noscript><p class="product__status">Checkout needs JavaScript. Please turn it on to buy.</p></noscript>
+        <div class="product__desc">
+${descHtml(p)}
+        </div>
+        ${policy}
+      </form>
+    </div>
+  </div>
+</article>
+<dialog class="checkout" id="checkout" aria-labelledby="checkout-title">
+  <div class="checkout__box">
+    <div class="checkout__top">
+      <h2 id="checkout-title">Checkout</h2>
+      <button class="player__close" type="button" aria-label="Close checkout" data-close>${ICON_CLOSE}</button>
+    </div>
+    <p class="checkout__item" data-summary></p>
+    <div class="checkout__mount" data-mount><p class="checkout__wait">Opening secure checkout…</p></div>
+  </div>
+</dialog>
+<script type="application/json" id="product-data">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
+    write(`shop/${p.slug}/index.html`, page({
+      path: productPath(p), current: 'shop', body, ...robots, ogType: 'product', image: `/shop/${p.slug}/share.jpg`,
+      title: `${p.title} | ${SERIES} Merch | ${cfg.brand}`, description,
+      head: `<script src="/shop.js?v=${sv}" defer></script>\n<link rel="preconnect" href="https://js.stripe.com">\n<meta property="product:price:amount" content="${(def.price / 100).toFixed(2)}">\n<meta property="product:price:currency" content="USD">\n`,
+      ld: [
+        { '@type': 'Product', '@id': `${abs(productPath(p))}#product`, name: p.title, description: textOf(p).join(' ').slice(0, 5000) || description,
+          image: p.images.slice(0, 8).map(i => abs(picture(p, i))), url: abs(productPath(p)), brand: { '@type': 'Brand', name: cfg.brand },
+          offers: { '@type': 'AggregateOffer', priceCurrency: 'USD', lowPrice: (Math.min(...prices) / 100).toFixed(2), highPrice: (Math.max(...prices) / 100).toFixed(2), offerCount: p.variants.length,
+            availability: p.variants.some(v => v.available) ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: abs(productPath(p)) } },
+        crumbs([['Home', '/'], ['Shop', '/shop/'], [p.title, productPath(p)]]),
+      ],
+    }));
+    for (const f of fs.readdirSync(path.join(shopImg, p.slug))) {
+      fs.mkdirSync(path.join(DIST, 'shop', p.slug), { recursive: true });
+      fs.copyFileSync(path.join(shopImg, p.slug, f), path.join(DIST, 'shop', p.slug, f));
+    }
+    if (shopPublic) pages.push({ loc: productPath(p), lastmod: day(shopData.synced) });
+  }
+
+  // after Stripe: thanks (or, if the payment didn't finish, a way back)
+  write('shop/thanks/index.html', page({
+    path: '/shop/thanks/', current: 'shop', noindex: true, title: `Thanks for your order | ${cfg.brand}`, description: 'Your Happy Hillz order.',
+    head: `<script src="/shop.js?v=${sv}" defer></script>\n`,
+    body: `<section class="section thanks">
+  <div class="wrap thanks__in" data-thanks data-days="${dMin}–${dMax}">
+    <p class="burst burst--thanks">${burst(808, 14)}<span class="burst__text">Thank<br>you!</span></p>
+    <h1 class="page-title" data-thanks-title>Thanks for your order!</h1>
+    <p data-thanks-text>Your receipt is on its way to your email. Your order is printed just for you, usually arrives in ${dMin}–${dMax} business days, and you'll get tracking when it ships.</p>
+    <div class="actions"><a class="btn btn--pop" href="/episodes/">Watch an episode</a><a class="btn" href="/shop/">Back to the shop</a></div>
+  </div>
+</section>`,
+  }));
+  write('shop.js', shopJs);
+
+  // what /api/checkout.php may sell, at which price (the server never takes a price from the browser)
+  const catalog = {
+    site: SITE, shopId: String(shopData.shop?.id ?? ''), countries: SHOP.countries, delivery: SHOP.deliveryDays, maxQty: SHOP.maxQty, tax: SHOP.collectTax === true,
+    products: Object.fromEntries(products.map(p => [p.id, {
+      title: p.title, url: abs(productPath(p)),
+      variants: Object.fromEntries(p.variants.map(v => [String(v.id), {
+        title: v.title, price: v.price, ship: v.ship, available: v.available, image: abs(picture(p, firstPicture(p, groupOf(p, v)), 'jpg')),
+      }])),
+    }])),
+  };
+  const catalogJson = JSON.stringify(catalog);
+  if (/^JSON$/m.test(catalogJson)) throw new Error('catalog text breaks the PHP heredoc');
+  write('api/shop-catalog.php', `<?php\n// Generated by scripts/build.js from data/shop.json. Not served on its own.\nif (!defined('HH')) { http_response_code(404); exit; }\nreturn json_decode(<<<'JSON'\n${catalogJson}\nJSON, true);\n`);
+  for (const f of ['shop-lib.php', 'checkout.php', 'shop-status.php', 'stripe-webhook.php']) copy(`src/server/${f}`, `api/${f}`);
+}
+
 // Not found: a real 404 (an unknown address must not look like a page to search engines).
 write('404.html', page({
   path: '/404.html', noindex: true, title: `Page not found | ${cfg.brand}`, description: 'This page does not exist.',
@@ -489,7 +705,7 @@ ${pages.map(({ loc, lastmod, ep }) => `  <url>
   </url>`).join('\n')}
 </urlset>
 `);
-write('robots.txt', `User-agent: *\nAllow: /\nDisallow: /trailer/\n\nSitemap: ${SITE}/sitemap.xml\n`);
+write('robots.txt', `User-agent: *\nAllow: /\nDisallow: /trailer/\nDisallow: /api/\nDisallow: /shop/thanks/\n\nSitemap: ${SITE}/sitemap.xml\n`);
 
 // .htaccess lives in the build output so a deploy never removes it.
 const host = new URL(SITE).host.replace(/\./g, '\\.');
@@ -510,8 +726,10 @@ ErrorDocument 404 /404.html
 
 # Upload and staging files exist for a few seconds during a deploy; never serve them.
 RedirectMatch 404 /\\.deploy-
-# The play counter's data (and the admin password hash) are never served; deploys never touch the folder.
+# The play counter's data, the admin password hash and the shop's keys are never served; deploys never touch the folder.
 RedirectMatch 404 /\\.hh-data
+# PHP that other PHP files include; it does nothing on its own.
+RedirectMatch 404 ^/api/(hh-store|shop-lib|shop-catalog)\\.php$
 
 <IfModule mod_rewrite.c>
   RewriteEngine On

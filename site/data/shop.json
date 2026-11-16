@@ -1,0 +1,1978 @@
+{
+  "synced": "2026-11-15T11:16:18.784Z",
+  "shop": {
+    "id": 29760118,
+    "title": "My new store",
+    "channel": "custom_integration"
+  },
+  "products": [
+    {
+      "id": "6af993462ffca93f7e0d4e72",
+      "title": "Panther Mascot Panthers Pack Graphic Sweatshirt",
+      "printifyTitle": "Panther Mascot Panthers Pack Graphic Sweatshirt",
+      "slug": "panther-mascot-panthers-pack-graphic-sweatshirt",
+      "blocks": [
+        {
+          "p": "A bold sweatshirt for Panther fans who carry their team spirit everywhere. The front graphic features a powerful black panther, warm sunset tones, and the words “Happy Hills” and “Panthers Pack”—a striking design that feels at home on game days, tailgates, campus walks, and cool evenings with your crew. The medium-heavy fleece brings cozy warmth, while the relaxed dropped shoulders and classic fit keep the feel easy and comfortable. Ribbed cuffs and hem add a secure finish, and the clean back lets the front artwork stand out. Wear it when the temperature drops and your Panther pride comes forward."
+        },
+        {
+          "h": "Product features",
+          "ul": [
+            "80% ring-spun cotton and 20% polyester; fiber content varies by color",
+            "Medium-heavy 8.4 oz/yd² (285 g/m²) fleece fabric",
+            "Classic fit with relaxed dropped shoulders",
+            "Stretch ribbed cuffs and bottom hem with spandex",
+            "Seamless tubular construction, tear-away label, and REACH certification"
+          ]
+        },
+        {
+          "h": "Care instructions",
+          "ul": [
+            "Machine wash: cold (max 30C or 90F)",
+            "Non-chlorine: bleach as needed",
+            "Tumble dry: low heat",
+            "Iron, steam or dry: low heat",
+            "Do not dryclean"
+          ]
+        }
+      ],
+      "tags": [
+        "Men's Clothing",
+        "Women's Clothing",
+        "Unisex",
+        "Crew neck",
+        "DTG",
+        "Sweatshirts",
+        "US Elections Season",
+        "Holiday Picks",
+        "Neck Labels",
+        "Spring Essentials"
+      ],
+      "blueprintId": 1436,
+      "printProviderId": 99,
+      "colorOption": 0,
+      "defaultVariant": 104770,
+      "options": [
+        {
+          "name": "Colors",
+          "type": "color",
+          "values": [
+            {
+              "id": 521,
+              "title": "White",
+              "hex": "#ffffff"
+            }
+          ]
+        },
+        {
+          "name": "Sizes",
+          "type": "size",
+          "values": [
+            {
+              "id": 14,
+              "title": "S"
+            },
+            {
+              "id": 1547,
+              "title": "M"
+            },
+            {
+              "id": 1548,
+              "title": "L"
+            },
+            {
+              "id": 1549,
+              "title": "XL"
+            },
+            {
+              "id": 18,
+              "title": "2XL"
+            },
+            {
+              "id": 19,
+              "title": "3XL"
+            },
+            {
+              "id": 20,
+              "title": "4XL"
+            }
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "id": 104772,
+          "title": "White / 2XL",
+          "sku": "22762011904389156393",
+          "price": 2954,
+          "options": [
+            521,
+            18
+          ],
+          "available": true,
+          "ship": [
+            919,
+            209
+          ]
+        },
+        {
+          "id": 104769,
+          "title": "White / M",
+          "sku": "24159136626839380854",
+          "price": 2583,
+          "options": [
+            521,
+            1547
+          ],
+          "available": true,
+          "ship": [
+            919,
+            209
+          ]
+        },
+        {
+          "id": 104770,
+          "title": "White / L",
+          "sku": "43060405506359568784",
+          "price": 2583,
+          "options": [
+            521,
+            1548
+          ],
+          "available": true,
+          "ship": [
+            919,
+            209
+          ]
+        },
+        {
+          "id": 104768,
+          "title": "White / S",
+          "sku": "22555560142497973791",
+          "price": 2583,
+          "options": [
+            521,
+            14
+          ],
+          "available": true,
+          "ship": [
+            919,
+            209
+          ]
+        },
+        {
+          "id": 104771,
+          "title": "White / XL",
+          "sku": "92409172539653822460",
+          "price": 2583,
+          "options": [
+            521,
+            1549
+          ],
+          "available": true,
+          "ship": [
+            919,
+            209
+          ]
+        },
+        {
+          "id": 104774,
+          "title": "White / 4XL",
+          "sku": "19844255671055967979",
+          "price": 3606,
+          "options": [
+            521,
+            20
+          ],
+          "available": true,
+          "ship": [
+            919,
+            209
+          ]
+        },
+        {
+          "id": 104773,
+          "title": "White / 3XL",
+          "sku": "23767730686886938423",
+          "price": 3139,
+          "options": [
+            521,
+            19
+          ],
+          "available": true,
+          "ship": [
+            919,
+            209
+          ]
+        }
+      ],
+      "images": [
+        {
+          "file": "869593af1386",
+          "position": "front",
+          "groups": [
+            521
+          ]
+        },
+        {
+          "file": "e69f0138a61a",
+          "position": "back",
+          "groups": [
+            521
+          ]
+        },
+        {
+          "file": "636a4101411b",
+          "position": "left_sleeve",
+          "groups": [
+            521
+          ]
+        },
+        {
+          "file": "d3482ad4789a",
+          "position": "right_sleeve",
+          "groups": [
+            521
+          ]
+        }
+      ]
+    },
+    {
+      "id": "6af9799ef8f5964429006207",
+      "title": "Panthers Pack Trucker Hat",
+      "printifyTitle": "Panthers Pack Trucker Hat | Happy Hills Cartoon Game Merch | Run With The Pack Snapback Cap",
+      "slug": "panthers-pack-trucker-hat",
+      "blocks": [
+        {
+          "p": "Rep the Pack! This trucker cap carries the Panthers Pack badge from Happy Hills right up front: a bold, comic-style logo for fans of the cartoon and game. Pair it with the matching Panthers Pack tee, or wear it on its own for game nights, road trips, festivals and sunny weekends."
+        },
+        {
+          "p": "The structured mid-profile shape and curved, multi-stitched visor give it a classic trucker look, and the breathable mesh back keeps you cool. One snap and it fits."
+        },
+        {
+          "p": "Product features"
+        },
+        {
+          "h": "",
+          "ul": [
+            "Adjustable plastic snap closure, one size fits most",
+            "Precurved visor with a matching-color underbill",
+            "Structured six-panel, mid-profile construction with panel eyelets",
+            "Cotton-polyester front and visor with a breathable polyester mesh back",
+            "100% cotton sweatband, sewn-in label and visor brand sticker"
+          ]
+        },
+        {
+          "p": "Care instructions"
+        },
+        {
+          "h": "",
+          "ul": [
+            "Spot clean with warm water and a little dish soap; no need to soak the whole cap.",
+            "For stubborn spots, use a soft-bristled brush."
+          ]
+        }
+      ],
+      "tags": [
+        "Hats",
+        "Accessories",
+        "Embroidery",
+        "Bestsellers",
+        "4th of July"
+      ],
+      "blueprintId": 1743,
+      "printProviderId": 99,
+      "colorOption": 1,
+      "defaultVariant": 118729,
+      "options": [
+        {
+          "name": "Hat sizes",
+          "type": "size",
+          "values": [
+            {
+              "id": 2104,
+              "title": "One size"
+            }
+          ]
+        },
+        {
+          "name": "Richardson Colors",
+          "type": "color",
+          "values": [
+            {
+              "id": 5672,
+              "title": "Black / White",
+              "hex": "#f9f9f9"
+            },
+            {
+              "id": 5675,
+              "title": "Heather Grey / White",
+              "hex": "#a3a3a3"
+            },
+            {
+              "id": 5674,
+              "title": "Black / Charcoal",
+              "hex": "#6b6666"
+            },
+            {
+              "id": 5669,
+              "title": "Black",
+              "hex": "#141414"
+            },
+            {
+              "id": 5676,
+              "title": "Charcoal / Black",
+              "hex": "#141414"
+            },
+            {
+              "id": 5673,
+              "title": "Heather Grey / Black",
+              "hex": "#141414"
+            },
+            {
+              "id": 5670,
+              "title": "Loden",
+              "hex": "#8e845e"
+            }
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "id": 118722,
+          "title": "One size / Black",
+          "sku": "11531415456350826047",
+          "price": 2046,
+          "options": [
+            2104,
+            5669
+          ],
+          "available": true,
+          "ship": [
+            549,
+            219
+          ]
+        },
+        {
+          "id": 118723,
+          "title": "One size / Black / Charcoal",
+          "sku": "12647750601474173589",
+          "price": 2046,
+          "options": [
+            2104,
+            5674
+          ],
+          "available": true,
+          "ship": [
+            549,
+            219
+          ]
+        },
+        {
+          "id": 118724,
+          "title": "One size / Black / White",
+          "sku": "33212522562099391528",
+          "price": 2558,
+          "options": [
+            2104,
+            5672
+          ],
+          "available": true,
+          "ship": [
+            549,
+            219
+          ]
+        },
+        {
+          "id": 118726,
+          "title": "One size / Charcoal / Black",
+          "sku": "58526854756905666501",
+          "price": 2046,
+          "options": [
+            2104,
+            5676
+          ],
+          "available": true,
+          "ship": [
+            549,
+            219
+          ]
+        },
+        {
+          "id": 118727,
+          "title": "One size / Heather Grey / Black",
+          "sku": "30481549435546113287",
+          "price": 2046,
+          "options": [
+            2104,
+            5673
+          ],
+          "available": true,
+          "ship": [
+            549,
+            219
+          ]
+        },
+        {
+          "id": 118728,
+          "title": "One size / Heather Grey / White",
+          "sku": "25235628680381745178",
+          "price": 2046,
+          "options": [
+            2104,
+            5675
+          ],
+          "available": true,
+          "ship": [
+            549,
+            219
+          ]
+        },
+        {
+          "id": 118729,
+          "title": "One size / Loden",
+          "sku": "25720444918513410003",
+          "price": 2046,
+          "options": [
+            2104,
+            5670
+          ],
+          "available": true,
+          "ship": [
+            549,
+            219
+          ]
+        }
+      ],
+      "images": [
+        {
+          "file": "d9779cb1afd2",
+          "position": "other",
+          "groups": [
+            5672
+          ]
+        },
+        {
+          "file": "ccd7be133cf7",
+          "position": "other",
+          "groups": [
+            5672
+          ]
+        },
+        {
+          "file": "c10fcabdf870",
+          "position": "other",
+          "groups": [
+            5672
+          ]
+        },
+        {
+          "file": "a61604376b1d",
+          "position": "other",
+          "groups": [
+            5672
+          ]
+        },
+        {
+          "file": "394d5a4b6f7e",
+          "position": "other",
+          "groups": [
+            5675
+          ]
+        },
+        {
+          "file": "b3f5f0eaa7b4",
+          "position": "other",
+          "groups": [
+            5675
+          ]
+        },
+        {
+          "file": "9ac1636bfcd2",
+          "position": "other",
+          "groups": [
+            5675
+          ]
+        },
+        {
+          "file": "b2fb632a2a59",
+          "position": "other",
+          "groups": [
+            5675
+          ]
+        },
+        {
+          "file": "c970d77308ac",
+          "position": "other",
+          "groups": [
+            5674
+          ]
+        },
+        {
+          "file": "5be9e70a9e1e",
+          "position": "other",
+          "groups": [
+            5674
+          ]
+        },
+        {
+          "file": "5e966e439376",
+          "position": "other",
+          "groups": [
+            5674
+          ]
+        },
+        {
+          "file": "fd399cda03eb",
+          "position": "other",
+          "groups": [
+            5674
+          ]
+        },
+        {
+          "file": "804eb9085632",
+          "position": "other",
+          "groups": [
+            5669
+          ]
+        },
+        {
+          "file": "33fb6e4c8012",
+          "position": "other",
+          "groups": [
+            5669
+          ]
+        },
+        {
+          "file": "074ac2425a32",
+          "position": "other",
+          "groups": [
+            5669
+          ]
+        },
+        {
+          "file": "46fca8b631b4",
+          "position": "other",
+          "groups": [
+            5669
+          ]
+        },
+        {
+          "file": "012ebc0a4acf",
+          "position": "other",
+          "groups": [
+            5676
+          ]
+        },
+        {
+          "file": "c6c0840ac8a7",
+          "position": "other",
+          "groups": [
+            5676
+          ]
+        },
+        {
+          "file": "89e0b76f6a20",
+          "position": "other",
+          "groups": [
+            5676
+          ]
+        },
+        {
+          "file": "e999a054b16f",
+          "position": "other",
+          "groups": [
+            5676
+          ]
+        },
+        {
+          "file": "36d510ae4bc7",
+          "position": "other",
+          "groups": [
+            5673
+          ]
+        },
+        {
+          "file": "0f1f852e0dc9",
+          "position": "other",
+          "groups": [
+            5673
+          ]
+        },
+        {
+          "file": "8fe29fcd3027",
+          "position": "other",
+          "groups": [
+            5673
+          ]
+        },
+        {
+          "file": "64661d2c1ed3",
+          "position": "other",
+          "groups": [
+            5673
+          ]
+        },
+        {
+          "file": "207851b0713a",
+          "position": "other",
+          "groups": [
+            5670
+          ]
+        },
+        {
+          "file": "5b4b0423262e",
+          "position": "other",
+          "groups": [
+            5670
+          ]
+        },
+        {
+          "file": "688572e1c69a",
+          "position": "other",
+          "groups": [
+            5670
+          ]
+        },
+        {
+          "file": "35ecf6e71eab",
+          "position": "other",
+          "groups": [
+            5670
+          ]
+        }
+      ]
+    },
+    {
+      "id": "6af970542ffca93f7e0d24b2",
+      "title": "Panthers Pack Oversized Tee",
+      "printifyTitle": "Panthers Pack Oversized Tee | Happy Hills Cartoon Game Merch | Run With The Pack Graphic Shirt",
+      "slug": "panthers-pack-oversized-tee",
+      "blocks": [
+        {
+          "p": "Join the chase! The Panthers Pack race out of Happy Hills in this bold, comic-style graphic: two big cats sprinting through a sunset scene, with the \"Run With The Pack\" slogan underneath. It's Happy Hills merch for fans of the cartoon and game. It works for everyday wear, game nights and matching family outfits."
+        },
+        {
+          "p": "Fit & feel: Relaxed oversized fit with dropped shoulders for a modern, boxy look. Made from 100% Airlume combed and ring-spun cotton for extra softness. Athletic Heather is 90% cotton and 10% polyester."
+        },
+        {
+          "h": "",
+          "ul": [
+            "100% Airlume combed and ring-spun cotton (fiber content varies by color)",
+            "Medium fabric (6.0 oz/yd², 170 g/m²)",
+            "Relaxed, oversized fit",
+            "Tear-away label"
+          ]
+        },
+        {
+          "p": "For a less oversized look, size down."
+        }
+      ],
+      "tags": [
+        "Unisex",
+        "Men's Clothing",
+        "Women's Clothing",
+        "Cotton",
+        "Crew neck",
+        "Oversized",
+        "DTG",
+        "T-shirts",
+        "Neck Labels",
+        "Premium Apparel",
+        "Bestsellers"
+      ],
+      "blueprintId": 1382,
+      "printProviderId": 99,
+      "colorOption": 1,
+      "defaultVariant": 103513,
+      "options": [
+        {
+          "name": "Sizes",
+          "type": "size",
+          "values": [
+            {
+              "id": 1545,
+              "title": "XS"
+            },
+            {
+              "id": 1546,
+              "title": "S"
+            },
+            {
+              "id": 1547,
+              "title": "M"
+            },
+            {
+              "id": 1548,
+              "title": "L"
+            },
+            {
+              "id": 1549,
+              "title": "XL"
+            },
+            {
+              "id": 18,
+              "title": "2XL"
+            },
+            {
+              "id": 19,
+              "title": "3XL"
+            }
+          ]
+        },
+        {
+          "name": "Colors",
+          "type": "color",
+          "values": [
+            {
+              "id": 874,
+              "title": "White",
+              "hex": "#FFFFFF"
+            },
+            {
+              "id": 928,
+              "title": "Soft Pink",
+              "hex": "#FFEAE5"
+            },
+            {
+              "id": 873,
+              "title": "Black",
+              "hex": "#000000"
+            },
+            {
+              "id": 929,
+              "title": "Natural",
+              "hex": "#FFF8EA"
+            },
+            {
+              "id": 4627,
+              "title": "Toast",
+              "hex": "#ca8447"
+            },
+            {
+              "id": 876,
+              "title": "Dark Grey",
+              "hex": "#2A2930"
+            },
+            {
+              "id": 902,
+              "title": "Forest",
+              "hex": "#20362f"
+            },
+            {
+              "id": 631,
+              "title": "Athletic Heather",
+              "hex": "#C7C7C5"
+            },
+            {
+              "id": 881,
+              "title": "Navy",
+              "hex": "#1A1F35"
+            }
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "id": 103897,
+          "title": "2XL / Navy",
+          "sku": "30265243257261218478",
+          "price": 2431,
+          "options": [
+            18,
+            881
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103550,
+          "title": "2XL / White",
+          "sku": "97136360853020284279",
+          "price": 2431,
+          "options": [
+            18,
+            874
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103536,
+          "title": "2XL / Soft Pink",
+          "sku": "22044633073468886376",
+          "price": 2431,
+          "options": [
+            18,
+            928
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103522,
+          "title": "2XL / Black",
+          "sku": "65490043015312473997",
+          "price": 2431,
+          "options": [
+            18,
+            873
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103543,
+          "title": "2XL / Toast",
+          "sku": "11738870711805084598",
+          "price": 2431,
+          "options": [
+            18,
+            4627
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103890,
+          "title": "2XL / Natural",
+          "sku": "39381392575062265529",
+          "price": 2431,
+          "options": [
+            18,
+            929
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103529,
+          "title": "2XL / Dark Grey",
+          "sku": "22171272696001246669",
+          "price": 2431,
+          "options": [
+            18,
+            876
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103883,
+          "title": "2XL / Forest",
+          "sku": "23750700738729154355",
+          "price": 2431,
+          "options": [
+            18,
+            902
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103515,
+          "title": "2XL / Athletic Heather",
+          "sku": "32811444578381018178",
+          "price": 2431,
+          "options": [
+            18,
+            631
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103886,
+          "title": "S / Natural",
+          "sku": "43931327635149010671",
+          "price": 2323,
+          "options": [
+            1546,
+            929
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103519,
+          "title": "M / Black",
+          "sku": "20949362911906250753",
+          "price": 2323,
+          "options": [
+            1547,
+            873
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103545,
+          "title": "XS / White",
+          "sku": "23180719834967372612",
+          "price": 2323,
+          "options": [
+            1545,
+            874
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103889,
+          "title": "XL / Natural",
+          "sku": "16096503802196849272",
+          "price": 2323,
+          "options": [
+            1549,
+            929
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103533,
+          "title": "M / Soft Pink",
+          "sku": "10902509458108091531",
+          "price": 2323,
+          "options": [
+            1547,
+            928
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103535,
+          "title": "XL / Soft Pink",
+          "sku": "12535668168573871495",
+          "price": 2323,
+          "options": [
+            1549,
+            928
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103893,
+          "title": "S / Navy",
+          "sku": "13150336430035825982",
+          "price": 2323,
+          "options": [
+            1546,
+            881
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103882,
+          "title": "XL / Forest",
+          "sku": "26343687869584446617",
+          "price": 2323,
+          "options": [
+            1549,
+            902
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103880,
+          "title": "M / Forest",
+          "sku": "24880925800371864476",
+          "price": 2323,
+          "options": [
+            1547,
+            902
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103878,
+          "title": "XS / Forest",
+          "sku": "81355632495289150634",
+          "price": 2323,
+          "options": [
+            1545,
+            902
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103539,
+          "title": "S / Toast",
+          "sku": "56867075365117764875",
+          "price": 2323,
+          "options": [
+            1546,
+            4627
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103542,
+          "title": "XL / Toast",
+          "sku": "18753097543581301076",
+          "price": 2323,
+          "options": [
+            1549,
+            4627
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103549,
+          "title": "XL / White",
+          "sku": "26827134286911189870",
+          "price": 2323,
+          "options": [
+            1549,
+            874
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103892,
+          "title": "XS / Navy",
+          "sku": "19787729629762483255",
+          "price": 2323,
+          "options": [
+            1545,
+            881
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103513,
+          "title": "L / Athletic Heather",
+          "sku": "15680678690915060200",
+          "price": 2323,
+          "options": [
+            1548,
+            631
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103538,
+          "title": "XS / Toast",
+          "sku": "44066512341726986281",
+          "price": 2323,
+          "options": [
+            1545,
+            4627
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103525,
+          "title": "S / Dark Grey",
+          "sku": "89898564475673269420",
+          "price": 2323,
+          "options": [
+            1546,
+            876
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103546,
+          "title": "S / White",
+          "sku": "12789115684799429408",
+          "price": 2323,
+          "options": [
+            1546,
+            874
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103531,
+          "title": "XS / Soft Pink",
+          "sku": "17838073639315157467",
+          "price": 2323,
+          "options": [
+            1545,
+            928
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103524,
+          "title": "XS / Dark Grey",
+          "sku": "73136429609624107567",
+          "price": 2323,
+          "options": [
+            1545,
+            876
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103526,
+          "title": "M / Dark Grey",
+          "sku": "23271117925151700120",
+          "price": 2323,
+          "options": [
+            1547,
+            876
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103518,
+          "title": "S / Black",
+          "sku": "14854704138920107911",
+          "price": 2323,
+          "options": [
+            1546,
+            873
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103521,
+          "title": "XL / Black",
+          "sku": "15660124809162532903",
+          "price": 2323,
+          "options": [
+            1549,
+            873
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103541,
+          "title": "L / Toast",
+          "sku": "23808397460420128983",
+          "price": 2323,
+          "options": [
+            1548,
+            4627
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103885,
+          "title": "XS / Natural",
+          "sku": "19087534114804656954",
+          "price": 2323,
+          "options": [
+            1545,
+            929
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103540,
+          "title": "M / Toast",
+          "sku": "18440372018777791722",
+          "price": 2323,
+          "options": [
+            1547,
+            4627
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103881,
+          "title": "L / Forest",
+          "sku": "62329714910186042195",
+          "price": 2323,
+          "options": [
+            1548,
+            902
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103895,
+          "title": "L / Navy",
+          "sku": "17466452589630687650",
+          "price": 2323,
+          "options": [
+            1548,
+            881
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103532,
+          "title": "S / Soft Pink",
+          "sku": "56044016750171805429",
+          "price": 2323,
+          "options": [
+            1546,
+            928
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103896,
+          "title": "XL / Navy",
+          "sku": "22407612854395818923",
+          "price": 2323,
+          "options": [
+            1549,
+            881
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103879,
+          "title": "S / Forest",
+          "sku": "11879202285968717530",
+          "price": 2323,
+          "options": [
+            1546,
+            902
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103511,
+          "title": "S / Athletic Heather",
+          "sku": "23878991796058302881",
+          "price": 2323,
+          "options": [
+            1546,
+            631
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103520,
+          "title": "L / Black",
+          "sku": "19881675674168018551",
+          "price": 2323,
+          "options": [
+            1548,
+            873
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103512,
+          "title": "M / Athletic Heather",
+          "sku": "18157674327044348738",
+          "price": 2323,
+          "options": [
+            1547,
+            631
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103887,
+          "title": "M / Natural",
+          "sku": "25547265661162501880",
+          "price": 2323,
+          "options": [
+            1547,
+            929
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103510,
+          "title": "XS / Athletic Heather",
+          "sku": "30868868213361832699",
+          "price": 2323,
+          "options": [
+            1545,
+            631
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103548,
+          "title": "L / White",
+          "sku": "11394608698385924451",
+          "price": 2323,
+          "options": [
+            1548,
+            874
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103517,
+          "title": "XS / Black",
+          "sku": "70497358020782862985",
+          "price": 2323,
+          "options": [
+            1545,
+            873
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103528,
+          "title": "XL / Dark Grey",
+          "sku": "21835029255001995955",
+          "price": 2323,
+          "options": [
+            1549,
+            876
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103534,
+          "title": "L / Soft Pink",
+          "sku": "25489086248281482084",
+          "price": 2323,
+          "options": [
+            1548,
+            928
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103514,
+          "title": "XL / Athletic Heather",
+          "sku": "84069999374728161649",
+          "price": 2323,
+          "options": [
+            1549,
+            631
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103547,
+          "title": "M / White",
+          "sku": "17253387890492562157",
+          "price": 2323,
+          "options": [
+            1547,
+            874
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103527,
+          "title": "L / Dark Grey",
+          "sku": "85627490849274060273",
+          "price": 2323,
+          "options": [
+            1548,
+            876
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103894,
+          "title": "M / Navy",
+          "sku": "29564833296130354454",
+          "price": 2323,
+          "options": [
+            1547,
+            881
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103888,
+          "title": "L / Natural",
+          "sku": "32213762081399491194",
+          "price": 2323,
+          "options": [
+            1548,
+            929
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103530,
+          "title": "3XL / Dark Grey",
+          "sku": "16335451853082683506",
+          "price": 2681,
+          "options": [
+            19,
+            876
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103884,
+          "title": "3XL / Forest",
+          "sku": "23956778291598745279",
+          "price": 2681,
+          "options": [
+            19,
+            902
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103523,
+          "title": "3XL / Black",
+          "sku": "19658494814098392891",
+          "price": 2681,
+          "options": [
+            19,
+            873
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103544,
+          "title": "3XL / Toast",
+          "sku": "72633369859150418109",
+          "price": 2681,
+          "options": [
+            19,
+            4627
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103551,
+          "title": "3XL / White",
+          "sku": "61655899772058334219",
+          "price": 2681,
+          "options": [
+            19,
+            874
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103516,
+          "title": "3XL / Athletic Heather",
+          "sku": "49949436059228900743",
+          "price": 2681,
+          "options": [
+            19,
+            631
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103891,
+          "title": "3XL / Natural",
+          "sku": "78624772554561013712",
+          "price": 2681,
+          "options": [
+            19,
+            929
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103537,
+          "title": "3XL / Soft Pink",
+          "sku": "19903259668678284876",
+          "price": 2681,
+          "options": [
+            19,
+            928
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        },
+        {
+          "id": 103898,
+          "title": "3XL / Navy",
+          "sku": "28553091566960318700",
+          "price": 2681,
+          "options": [
+            19,
+            881
+          ],
+          "available": true,
+          "ship": [
+            535,
+            240
+          ]
+        }
+      ],
+      "images": [
+        {
+          "file": "d567667beda8",
+          "position": "front",
+          "groups": [
+            874
+          ]
+        },
+        {
+          "file": "aea53c4bd294",
+          "position": "other",
+          "groups": [
+            874
+          ]
+        },
+        {
+          "file": "64d13d9fcb90",
+          "position": "back",
+          "groups": [
+            874
+          ]
+        },
+        {
+          "file": "fcfe6515bf2c",
+          "position": "other",
+          "groups": [
+            874
+          ]
+        },
+        {
+          "file": "0c56fb732104",
+          "position": "front",
+          "groups": [
+            928
+          ]
+        },
+        {
+          "file": "cc924d732f98",
+          "position": "other",
+          "groups": [
+            928
+          ]
+        },
+        {
+          "file": "c6cab26d20e1",
+          "position": "back",
+          "groups": [
+            928
+          ]
+        },
+        {
+          "file": "c2a2547b223e",
+          "position": "other",
+          "groups": [
+            928
+          ]
+        },
+        {
+          "file": "e30c98d91140",
+          "position": "front",
+          "groups": [
+            873
+          ]
+        },
+        {
+          "file": "86efdbc3b911",
+          "position": "other",
+          "groups": [
+            873
+          ]
+        },
+        {
+          "file": "9efa685c5004",
+          "position": "back",
+          "groups": [
+            873
+          ]
+        },
+        {
+          "file": "d397211e1c04",
+          "position": "other",
+          "groups": [
+            873
+          ]
+        },
+        {
+          "file": "e5f7b9e4399b",
+          "position": "front",
+          "groups": [
+            929
+          ]
+        },
+        {
+          "file": "cda545db564d",
+          "position": "other",
+          "groups": [
+            929
+          ]
+        },
+        {
+          "file": "fe8c367941f0",
+          "position": "back",
+          "groups": [
+            929
+          ]
+        },
+        {
+          "file": "5cd6cbbf1401",
+          "position": "other",
+          "groups": [
+            929
+          ]
+        },
+        {
+          "file": "a18abd844c58",
+          "position": "front",
+          "groups": [
+            4627
+          ]
+        },
+        {
+          "file": "76051734d722",
+          "position": "other",
+          "groups": [
+            4627
+          ]
+        },
+        {
+          "file": "bd4f8f92c7b6",
+          "position": "back",
+          "groups": [
+            4627
+          ]
+        },
+        {
+          "file": "4c39782d34ce",
+          "position": "other",
+          "groups": [
+            4627
+          ]
+        },
+        {
+          "file": "69711781a0ca",
+          "position": "front",
+          "groups": [
+            876
+          ]
+        },
+        {
+          "file": "5ab02fab4803",
+          "position": "other",
+          "groups": [
+            876
+          ]
+        },
+        {
+          "file": "be4b1180c967",
+          "position": "back",
+          "groups": [
+            876
+          ]
+        },
+        {
+          "file": "425c5500855f",
+          "position": "other",
+          "groups": [
+            876
+          ]
+        },
+        {
+          "file": "91bbd735aaa1",
+          "position": "front",
+          "groups": [
+            902
+          ]
+        },
+        {
+          "file": "8b69e03154e6",
+          "position": "other",
+          "groups": [
+            902
+          ]
+        },
+        {
+          "file": "1c4260beaca1",
+          "position": "back",
+          "groups": [
+            902
+          ]
+        },
+        {
+          "file": "1addad25d193",
+          "position": "other",
+          "groups": [
+            902
+          ]
+        },
+        {
+          "file": "8ea91f36f77b",
+          "position": "front",
+          "groups": [
+            631
+          ]
+        },
+        {
+          "file": "e2a94c69dd62",
+          "position": "other",
+          "groups": [
+            631
+          ]
+        },
+        {
+          "file": "f8c16a8d7787",
+          "position": "back",
+          "groups": [
+            631
+          ]
+        },
+        {
+          "file": "eff0d34766f4",
+          "position": "other",
+          "groups": [
+            631
+          ]
+        },
+        {
+          "file": "aed5f3ee5e35",
+          "position": "front",
+          "groups": [
+            881
+          ]
+        },
+        {
+          "file": "7072b541ffbc",
+          "position": "other",
+          "groups": [
+            881
+          ]
+        },
+        {
+          "file": "9a25bd8a7640",
+          "position": "back",
+          "groups": [
+            881
+          ]
+        },
+        {
+          "file": "50d828d2c55d",
+          "position": "other",
+          "groups": [
+            881
+          ]
+        }
+      ]
+    }
+  ]
+}
