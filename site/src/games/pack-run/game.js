@@ -130,7 +130,7 @@ if (typeof document === 'undefined') {
 // =====================================================================================
 //  THE GAME
 // =====================================================================================
-const SCRIPT = document.currentScript && document.currentScript.src;
+const SCRIPT = document.currentScript && /** @type {HTMLScriptElement} */ (document.currentScript).src;
 const root = document.getElementById('pack-run');
 if (!root) return;
 const $ = s => root.querySelector(s), $$ = s => [...root.querySelectorAll(s)];
@@ -250,6 +250,7 @@ function dropPic(key) { const old = pics.get(key); if (old && old.img.close) old
 // A cat's picture is at most this many pixels; on a big high-density screen it is painted smaller and drawn scaled up,
 // so a phone or a slow laptop still repaints each cat often enough to look alive.
 const CAT_PX = crew.length >= 4 ? 230000 : crew.length ? 140000 : 110000;
+/** @returns {[HTMLCanvasElement, CanvasRenderingContext2D]} */
 function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 function catBox() {                         // the space a cat can take, in body units around its feet (wider from the side)
   const side = 1 - Math.abs(Math.sin(cam.yaw * DEG));
@@ -621,7 +622,8 @@ let threat = [params.get('threat'), store.get('packrun.threat')].find(t => THREA
 let level = [params.get('level'), store.get('packrun.level')].find(l => LEVELS[l]) || 'easy';   // ?level=hard, for testing   // ?threat=buffalo picks one, for testing
 const obs = [], puffs = [], blasts = [], spits = [];
 const pickup = o => o.kind === 'star' || o.kind === 'gem';
-const run = { t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 0, spitT: 0, cancels: 0, gems: 0 };
+/** @type {RunState} */
+const run = { warned: false, lastGap: 0, botT: 0, t: 0, dist: 0, stars: 0, paws: 3, inv: 0, lane: MID, jumpT: -9, jumpBuf: -9, fireT: -9, fireBuf: -9, next: 0, nextLog: 0, wave: 0, lastRow: -9, rnd: rng(1), hinted: false, combo: 0, won: false, slow: 0, bonus: 0, spooked: 0, popT: -9, armor: null, nextGem: 0, spitT: 0, cancels: 0, gems: 0 };
 const progress = () => clamp(run.t / ROUND);
 const airborne = () => { const J = (STL - run.jumpT) / JD; return J > 0.14 && J < 0.9; };
 const scoreNow = () => Math.floor(run.dist / 100) + run.stars * 25 + run.bonus + (run.won ? 200 : 0);
@@ -1100,8 +1102,9 @@ function pickLevel(l) {
   $$('input[data-level]').forEach(i => { i.checked = i.value === l; });
   root.dataset.level = l;
 }
-root.addEventListener('change', e => { if (e.target.matches('input[data-threat]')) pickThreat(e.target.value); if (e.target.matches('input[data-level]')) pickLevel(e.target.value); });
-root.addEventListener('click', e => {
+root.addEventListener('change', e => { const t = /** @type {HTMLInputElement} */ (e.target); if (t.matches('input[data-threat]')) pickThreat(t.value); if (t.matches('input[data-level]')) pickLevel(t.value); });
+root.addEventListener('click', ev => {
+  const e = { target: /** @type {Element} */ (ev.target), preventDefault: () => ev.preventDefault() };
   if (e.target.closest('[data-play]')) { e.preventDefault(); startRound(); }
   else if (e.target.closest('[data-resume]')) setPaused(false);
   else if (e.target.closest('[data-pause]')) setPaused(true);
@@ -1110,7 +1113,7 @@ root.addEventListener('click', e => {
 
 // ---- sound: generated, like the cartoon's scores. Off until the player turns it on. ----
 const sound = (() => {
-  const AC = window.AudioContext || window.webkitAudioContext;
+  const AC = window.AudioContext || /** @type {any} */ (window).webkitAudioContext;
   let ac = null, master, sfx, mus, rum, noise, on = false, musicOn = false, next = 0, step = 0, timer = 0;
   const btn = $('[data-sound]');
   function init() {
@@ -1218,7 +1221,7 @@ const sound = (() => {
 // ---- the loop: it only runs while the game is on screen, and it pauses a round when you look away ----
 let last = 0, raf = 0, visible = true, fpsT = 0, fpsN = 0, slowFor = 0, workSum = 0;
 // numbers for testing: frames per second, milliseconds of script per frame, cat pictures per second per cat
-const stats = window.__packRun = { fps: 0, work: 0, catFps: 0, quality: 0, painter: crew.length ? 'workers' : 'page' };
+const stats = /** @type {any} */ (window).__packRun = { fps: 0, work: 0, catFps: 0, quality: 0, painter: crew.length ? 'workers' : 'page' };
 Object.defineProperties(stats, { lane: { get: () => run.lane, enumerable: true }, blasts: { get: () => blasts.length, enumerable: true }, level: { get: () => level, enumerable: true }, roarAgo: { get: () => +(STL - run.fireT).toFixed(2), enumerable: true }, armor: { get: () => run.armor && run.armor.kind, enumerable: true }, gems: { get: () => run.gems, enumerable: true }, spits: { get: () => spits.length, enumerable: true }, cancels: { get: () => run.cancels, enumerable: true }, spooked: { get: () => run.spooked, enumerable: true }, score: { get: scoreNow, enumerable: true }, paws: { get: () => run.paws, enumerable: true }, air: { get: airborne, enumerable: true }, state: { get: () => paused ? 'paused' : state, enumerable: true } });
 function frame(ts) {
   raf = requestAnimationFrame(frame);

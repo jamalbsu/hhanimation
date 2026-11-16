@@ -12,11 +12,13 @@
     "game-shot": "node scripts/build.js && node scripts/game-shot.js && node scripts/build.js",
     "check-server": "node scripts/deploy.js --check",
     "deploy:dry": "node scripts/build.js && node scripts/deploy.js --dry-run",
-    "deploy": "node scripts/build.js && node scripts/deploy.js"
+    "deploy": "node scripts/build.js && node scripts/deploy.js",
+    "typecheck": "tsc -p ."
   },
   "devDependencies": {
     "@fontsource/anton": "^5.3.0",
     "@fontsource/comic-neue": "^5.3.0",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "typescript": "^5.9.3"
   }
 }

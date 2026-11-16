@@ -36,6 +36,7 @@ Run these from this folder (`site/`):
 | `npm run admin-password` | Sets the password for the admin page `/secret-crm-door/` (asks twice, stores only a hash on the server). |
 | `npm run shop-keys` | Stores the shop's Printify token and Stripe keys on the server (typed privately; Enter keeps a stored key), then checks that they work. |
 | `npm run shop-sync` | Reads the products from Printify (through the server) into `data/shop.json` and `src/shop/`. Run after changing a product in Printify, then commit. `-- --shop <id>` picks the Printify shop if there are several. |
+| `npm run typecheck` | Type-checks `game.js` with TypeScript, with no change to how it is built or runs. The game stays plain JavaScript; types are written as JSDoc comments. It catches misspelled names, wrong kinds of values and calls to things that do not exist. `globals.d.ts` next to the game lists what the cartoon code provides (the panther rig and the herds) and the shape of a round (`RunState`). Run it before committing a change to the game. |
 | `npm run game-shot` | Builds, then makes Pack Run's share image (`src/games/pack-run/shot.png`) from a still of the game in headless Chrome, then builds again. Commit the image. Needs Chrome; set `CHROME` to its path if it isn't in the usual place. |
 | `npm run check-server` | Tests SSH access and lists the document root. |
 | `npm run deploy:dry` | Builds, uploads, and prints what would change on the server. Changes nothing. |
