@@ -333,6 +333,14 @@ const FAR = (() => { const r = rng(24), a = []; for (let i = 0; i < 26; i++) a.p
 const CLOUDS = [[0.08, 0.5, 0.06], [0.42, 0.72, 0.075], [0.7, 0.42, 0.05], [0.9, 0.64, 0.065]];
 const wrapF = (wf, span, back) => (((wf - SD) % span) + span) % span - back;
 
+function ridge(base, h, shift, freq, fill, seed) {          // a range of hills: a few sines added up, filled down to the horizon
+  main.fillStyle = fill; main.beginPath(); main.moveTo(0, base);
+  for (let x = 0; x <= CW + 24; x += 24) {
+    const u = (x - shift) * freq;
+    main.lineTo(x, base - h * (0.45 + 0.3 * Math.sin(u + seed) + 0.17 * Math.sin(u * 2.3 + seed * 2) + 0.08 * Math.sin(u * 5.1 + seed * 3)));
+  }
+  main.lineTo(CW + 24, base); main.closePath(); main.fill();
+}
 function drawSky() {
   const top = Math.max(0, HY);
   const g = main.createLinearGradient(0, HY - CH * 0.75, 0, HY);
@@ -349,6 +357,21 @@ function drawSky() {
   for (const [cx, cy, r] of CLOUDS) {
     const P = CW * 1.6, x = ((CW * cx * 1.6 + pan * 0.5 + STL * 6 * DPR) % P + P) % P - CW * 0.3, y = HY - (HY + CH * 0.1) * cy, rr = M * r;
     main.beginPath(); main.arc(x, y, rr, 0, TAU); main.arc(x + rr * 1.3, y - rr * 0.35, rr * 0.8, 0, TAU); main.arc(x + rr * 2.3, y, rr * 0.9, 0, TAU); main.fill();
+  }
+  // soft rays fanning out from the sun
+  main.fillStyle = 'rgba(255,236,190,0.07)';
+  for (let i = 0; i < 7; i++) {
+    const a = -Math.PI / 2 + (i - 3) * 0.3 + Math.sin(STL * 0.3 + i) * 0.03, a2 = a + 0.1, L = M * 1.6;
+    main.beginPath(); main.moveTo(sx, sy); main.lineTo(sx + Math.cos(a) * L, sy + Math.sin(a) * L); main.lineTo(sx + Math.cos(a2) * L, sy + Math.sin(a2) * L); main.closePath(); main.fill();
+  }
+  // two ranges of far hills and one mountain, drifting slowly as the camera turns
+  ridge(HY + 2, M * 0.1, pan * 0.12, 0.0018, 'rgba(196,142,128,0.5)', 1.3);
+  ridge(HY + 2, M * 0.062, pan * 0.22, 0.0027, 'rgba(172,124,98,0.6)', 4.1);
+  // a few birds, gliding
+  main.strokeStyle = 'rgba(70,46,34,0.55)'; main.lineWidth = Math.max(1, M * 0.004); main.lineCap = 'round';
+  for (let i = 0; i < 5; i++) {
+    const bx = ((i * 0.23 + STL * (0.012 + i * 0.002)) % 1.2) * CW * 1.1 - CW * 0.1 + pan * 0.05, by = HY - M * (0.2 + 0.07 * i) + Math.sin(STL * 1.3 + i * 2) * M * 0.012, w = M * (0.014 + 0.003 * (i % 3)), fl = Math.sin(STL * 5 + i * 1.7) * w * 0.45;
+    main.beginPath(); main.moveTo(bx - w, by - fl); main.quadraticCurveTo(bx - w * 0.4, by - w * 0.5, bx, by); main.quadraticCurveTo(bx + w * 0.4, by - w * 0.5, bx + w, by - fl); main.stroke();
   }
   // a hazy skyline of flat-topped acacias, like the one along the top of the site
   const P = CW * 2.2, base = HY + 2;
@@ -391,6 +414,9 @@ function drawTrail() {
   const edge = LANE * (MID + 0.62);
   band(-edge, edge, 'rgba(206,170,112,0.32)');
   for (let l = 0; l < LANES; l++) { const z = laneZ(l); band(z - 100, z + 100, TRAIL[0]); band(z - 76, z + 76, TRAIL[1]); }
+  // light and shade rushing toward us across the trail: the speed you see
+  const sp = 520, so = SD % (sp * 2);
+  for (let f = -so - 400; f < 6400; f += sp * 2) quad(f, f + sp, -edge, edge, 'rgba(255,240,200,0.07)');
   // tufts of grass between the lanes and along the edges, rushing past: the speed you see
   const step = 300, off = SD % step, tufts = [-edge, edge];
   for (let l = 0; l < LANES - 1; l++) tufts.push(laneZ(l) + LANE / 2);
