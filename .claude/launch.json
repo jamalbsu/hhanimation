@@ -20,6 +20,13 @@
       "runtimeArgs": ["-m", "http.server", "8780", "--bind", "127.0.0.1", "--directory", "site/dist"],
       "port": 8780,
       "autoPort": false
+    },
+    {
+      "name": "happyhillz-site-main",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8781", "--bind", "127.0.0.1", "--directory", "site/dist"],
+      "port": 8781,
+      "autoPort": false
     }
   ]
 }
